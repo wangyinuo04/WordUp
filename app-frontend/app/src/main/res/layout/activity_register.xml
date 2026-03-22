@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background_global"
+    android:orientation="vertical"
+    android:padding="32dp"
+    android:gravity="center">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="  新用户注册"
+        android:textColor="@color/color_text_primary"
+        android:drawableStart="@drawable/ic_cat_paw"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="32dp"/>
+
+    <EditText
+        android:id="@+id/etRegUsername"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:background="@drawable/bg_edittext"
+        android:textColor="@color/color_text_primary"
+        android:textColorHint="@color/color_input_inactive"
+        android:hint="请输入你要注册的账号" />
+
+    <EditText
+        android:id="@+id/etRegPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:background="@drawable/bg_edittext"
+        android:textColor="@color/color_text_primary"
+        android:textColorHint="@color/color_input_inactive"
+        android:hint="请输入密码"
+        android:inputType="textPassword"
+        android:layout_marginTop="16dp"/>
+
+    <EditText
+        android:id="@+id/etRegConfirmPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:background="@drawable/bg_edittext"
+        android:textColor="@color/color_text_primary"
+        android:textColorHint="@color/color_input_inactive"
+        android:hint="请再次确认密码"
+        android:inputType="textPassword"
+        android:layout_marginTop="16dp"/>
+
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnSubmitRegister"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@drawable/bg_button_primary"
+        android:textColor="@color/color_text_primary"
+        android:elevation="2dp"
+        android:text="立即注册"
+        android:layout_marginTop="32dp"/>
+
+
+    <TextView
+        android:id="@+id/tvRegResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:layout_marginTop="16dp"
+        android:textColor="@color/color_button_primary"
+        android:textSize="16sp"
+        android:gravity="center" />
+</LinearLayout>

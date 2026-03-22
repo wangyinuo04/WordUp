@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="color_background_global">#F9F6F0</color>
+    <color name="color_text_primary">#4A332D</color>
+    <color name="color_input_inactive">#D9D0C7</color>
+    <color name="color_error_hint">#D47A6A</color>
+    <color name="color_button_primary">#E3B778</color>
+
+    <color name="wordup_bg_global">#FFFCF6</color>
+    <color name="wordup_white">#FFFFFF</color>
+
+    <color name="wordup_primary">#735851</color>
+    <color name="wordup_accent_brown">#895A27</color>
+    <color name="wordup_accent_green">#586952</color>
+    <color name="wordup_mascot_bg">#FFDBD1</color>
+
+    <color name="wordup_text_primary">#513A33</color>
+    <color name="wordup_text_secondary">#65655B</color>
+    <color name="wordup_text_title">#383830</color>
+    <color name="wordup_text_mascot_title">#654C45</color>
+    <color name="wordup_text_mascot_sub">#70554E</color>
+
+    <color name="wordup_placeholder_grey">#E0E0E0</color>
+    <color name="wordup_chart_bg">#F0F0F0</color>
+
+    <color name="wordup_green_alpha_10">#1A586952</color>
+    <color name="wordup_green_alpha_50">#80586952</color>
+    <color name="wordup_brown_alpha_50">#80895A27</color>
+    <color name="wordup_darkbrown_alpha_50">#80654C45</color>
+
+    <color name="wordup_surface_low">#FCF9F1</color>
+    <color name="wordup_error">#A64542</color>
+    <color name="wordup_gold_button">#E3B778</color>
+    <color name="wordup_outline_variant">#EAE9DC</color>
+
+    <color name="wordup_white_alpha_80">#CCFFFFFF</color>
+    <color name="wordup_primary_alpha_60">#99513A33</color>
+    <color name="wordup_primary_alpha_50">#80513A33</color>
+    <color name="wordup_green_alpha_40">#66586952</color>
+    <color name="wordup_outline_alpha_30">#4DEAE9DC</color>
+    <color name="wordup_outline_alpha_15">#26EAE9DC</color>
+</resources>

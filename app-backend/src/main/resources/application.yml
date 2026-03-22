@@ -1,0 +1,15 @@
+
+spring:
+  # 数据库连接配置
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/ai_app_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root          # 你的 MySQL 用户名，通常是 root
+    password: 723102517          # ⚠️ 注意：这里一定要改成你电脑上 MySQL 的真实密码！
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # 之前配置好的 Redis 保持不变
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+

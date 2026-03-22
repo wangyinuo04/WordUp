@@ -1,0 +1,33 @@
+# --- Android 前端忽略规则 ---
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# --- Java 后端忽略规则 ---
+target/
+*.class
+*.log
+*.war
+*.ear
+*.zip
+*.tar.gz
+
+# --- 业务生成数据忽略（核心修改点） ---
+# 忽略 uploads 文件夹下的所有文件
+app-backend/uploads/*
+# 但排除 .gitkeep 文件，使其能够被上传以保留目录结构
+!app-backend/uploads/.gitkeep
+
+# --- IntelliJ IDEA 通用忽略规则 ---
+*.iws
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+out/
+
+# --- 系统级忽略规则 ---
+Thumbs.db

@@ -10,6 +10,11 @@ appcompat = "1.6.1"
 material = "1.11.0"
 activity = "1.8.0"
 constraintlayout = "2.1.4"
+firebaseCrashlyticsBuildtools = "3.0.6"
+volley = "1.2.1"
+tracingPerfettoHandshake = "1.0.1"
+compiler = "3.2.0-alpha11"
+cronetEmbedded = "143.7445.0"
 
 [libraries]
 # 依赖库定义 - 键名已针对您的代码进行对齐
@@ -21,6 +26,11 @@ appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "a
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+firebase-crashlytics-buildtools = { group = "com.google.firebase", name = "firebase-crashlytics-buildtools", version.ref = "firebaseCrashlyticsBuildtools" }
+volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
+androidx-tracing-perfetto-handshake = { group = "androidx.tracing", name = "tracing-perfetto-handshake", version.ref = "tracingPerfettoHandshake" }
+androidx-compiler = { group = "androidx.databinding", name = "compiler", version.ref = "compiler" }
+cronet-embedded = { group = "org.chromium.net", name = "cronet-embedded", version.ref = "cronetEmbedded" }
 
 [plugins]
 # 插件定义

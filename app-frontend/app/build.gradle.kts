@@ -31,6 +31,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_1_8
     }
 }
+configurations.all {
+    exclude(group = "com.google.guava", module = "listenablefuture")
+}
 
 dependencies {
     // 使用版本目录 (Version Catalog) 引入的依赖
@@ -38,6 +41,11 @@ dependencies {
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
+    implementation(libs.firebase.crashlytics.buildtools)
+    implementation(libs.volley)
+    implementation(libs.androidx.tracing.perfetto.handshake)
+    implementation(libs.androidx.compiler)
+    implementation(libs.cronet.embedded)
 
     // 测试依赖
     testImplementation(libs.junit)

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -11,6 +12,7 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.bumptech.glide.Glide;
@@ -58,11 +60,13 @@ public class EditProfileActivity extends AppCompatActivity {
         TextView tvEditNickname = findViewById(R.id.tvEditNickname);
         ivEditAvatar = findViewById(R.id.ivEditAvatar);
         LinearLayout itemEditAvatar = findViewById(R.id.itemEditAvatar);
+        LinearLayout itemEditNickname = findViewById(R.id.itemEditNickname);
 
-        // 1. 读取账号名
         SharedPreferences prefs = getSharedPreferences("MyAppConfig", Context.MODE_PRIVATE);
-        String savedUsername = prefs.getString("username", "WordUp 用户");
-        tvEditNickname.setText(savedUsername);
+
+        /* 1. 读取并显示本地存储的昵称 */
+        String savedNickname = prefs.getString("nickname", "WordUp 用户");
+        tvEditNickname.setText(savedNickname);
 
         // 2. 🌟 检查小本子上有没有存过的头像 URL，如果有，用 Glide 自动加载并缓存！
         String savedAvatarUrl = prefs.getString("avatar_url", "");
@@ -72,30 +76,59 @@ public class EditProfileActivity extends AppCompatActivity {
 
         // 点击头像，唤起相册
         itemEditAvatar.setOnClickListener(v -> mGetContent.launch("image/*"));
+
+        /* 绑定昵称修改点击事件 */
+        itemEditNickname.setOnClickListener(v -> showEditNicknameDialog(tvEditNickname));
     }
 
-    // ==========================================
-    // 🚨 核心战役：上传图片给后端的硬核代码 🚨
-    // ==========================================
+    /* 显示修改昵称对话框 */
+    private void showEditNicknameDialog(TextView tvEditNickname) {
+        final EditText editText = new EditText(this);
+        editText.setText(tvEditNickname.getText().toString());
+        editText.setSelection(editText.getText().length());
+
+        new AlertDialog.Builder(this)
+                .setTitle("修改昵称")
+                .setView(editText)
+                .setPositiveButton("确定", (dialog, which) -> {
+                    String newNickname = editText.getText().toString().trim();
+                    if (!newNickname.isEmpty()) {
+                        updateNicknameLocal(newNickname, tvEditNickname);
+                    } else {
+                        Toast.makeText(EditProfileActivity.this, "昵称不能为空", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /* 更新本地昵称数据并刷新界面 */
+    private void updateNicknameLocal(String newNickname, TextView tvEditNickname) {
+        SharedPreferences prefs = getSharedPreferences("MyAppConfig", Context.MODE_PRIVATE);
+        prefs.edit().putString("nickname", newNickname).apply();
+        tvEditNickname.setText(newNickname);
+        Toast.makeText(this, "昵称修改成功（暂存本地）", Toast.LENGTH_SHORT).show();
+    }
+
     private void uploadAvatarToServer(Uri uri) {
 
-        // 1. 极其关键的辅助操作：把系统的 Uri 转化成真实的 File
+        // 1. 将系统的 Uri 转化成真实的 File
         File tempFile = uriToFile(uri);
         if (tempFile == null) return;
 
-        // 2. 拿出你的当前账号名
+        // 2. 读取当前账号名
         SharedPreferences prefs = getSharedPreferences("MyAppConfig", Context.MODE_PRIVATE);
         String username = prefs.getString("username", "");
 
-        // 3. 组装 MultipartBody (也就是构建包含文件和文字的复杂表单)
+        // 3. 组装 MultipartBody
         RequestBody fileBody = RequestBody.create(tempFile, MediaType.parse("image/*"));
         RequestBody requestBody = new MultipartBody.Builder()
-                .setType(MultipartBody.FORM) // 表单类型
-                .addFormDataPart("file", tempFile.getName(), fileBody) // 塞入图片文件
-                .addFormDataPart("username", username)                 // 塞入用户名
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", tempFile.getName(), fileBody)
+                .addFormDataPart("username", username)
                 .build();
 
-        // 4. 发射给咱们刚才写的 Spring Boot 接口
+        // 4. 发起网络请求
         Request request = new Request.Builder()
                 .url("http://10.0.2.2:8080/uploadAvatar")
                 .post(requestBody)
@@ -104,23 +137,51 @@ public class EditProfileActivity extends AppCompatActivity {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                runOnUiThread(() -> Toast.makeText(EditProfileActivity.this, "上传失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(EditProfileActivity.this, "网络请求失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                final String resultText = response.body().string();
+                try {
+                    final String resultText = response.body() != null ? response.body().string() : "";
 
-                runOnUiThread(() -> {
-                    // 如果后端返回的是 http 开头的网址，说明成功了！
-                    if (resultText.startsWith("http")) {
-                        // 把这段专属的图片网址，记在小本子上！
-                        prefs.edit().putString("avatar_url", resultText).apply();
-                        Toast.makeText(EditProfileActivity.this, "头像更新成功", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(EditProfileActivity.this, resultText, Toast.LENGTH_SHORT).show();
+                    // 将后端返回的 JSON 字符串解析为 JSONObject
+                    org.json.JSONObject jsonObject = new org.json.JSONObject(resultText);
+                    int code = jsonObject.getInt("code");
+
+                    runOnUiThread(() -> {
+                        if (code == 200) {
+                            try {
+                                // 提取真实的图片 URL
+                                String avatarUrl = jsonObject.getString("data");
+
+                                // 将正确的 URL 保存到本地缓存
+                                prefs.edit().putString("avatar_url", avatarUrl).apply();
+
+                                // 使用 Glide 加载网络图片到当前的 ImageView
+                                Glide.with(EditProfileActivity.this).load(avatarUrl).into(ivEditAvatar);
+
+                                Toast.makeText(EditProfileActivity.this, "头像更新成功", Toast.LENGTH_SHORT).show();
+                            } catch (org.json.JSONException e) {
+                                e.printStackTrace();
+                            }
+                        } else {
+                            try {
+                                String msg = jsonObject.getString("msg");
+                                Toast.makeText(EditProfileActivity.this, "上传失败: " + msg, Toast.LENGTH_SHORT).show();
+                            } catch (org.json.JSONException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    runOnUiThread(() -> Toast.makeText(EditProfileActivity.this, "数据解析异常", Toast.LENGTH_SHORT).show());
+                } finally {
+                    if (response.body() != null) {
+                        response.body().close();
                     }
-                });
+                }
             }
         });
     }

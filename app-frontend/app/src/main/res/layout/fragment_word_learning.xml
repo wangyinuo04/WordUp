@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background_global"
+    android:orientation="vertical"
+    android:paddingHorizontal="24dp"
+    android:paddingTop="20dp"
+    android:paddingBottom="24dp"
+    android:clipToPadding="false">
+
+    <!-- ============ 顶部导航栏 ============ -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- 返回按钮（左上角） -->
+        <LinearLayout
+            android:id="@+id/btnBack"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_button_outline"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:padding="12dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_arrow_back"
+                android:contentDescription="返回"
+                app:tint="@color/color_text_primary" />
+        </LinearLayout>
+
+        <!-- 占位，让进度显示靠右 -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1" />
+
+        <!-- 进度显示：0/150（右上角） -->
+        <TextView
+            android:id="@+id/tvProgress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="0/150"
+            android:textColor="@color/color_text_primary"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/playpen_sans_semibold" />
+    </LinearLayout>
+
+    <!-- ============ 防瞌睡提醒 ============ -->
+    <LinearLayout
+        android:id="@+id/layoutAntiSleep"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/bg_profile_card"
+        android:elevation="2dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp"
+        android:visibility="visible">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_status_check"
+            app:tint="#666666" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="😺 防睡模式已开启，保持专注哦！"
+            android:textColor="#666666"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- ============ 单词卡片区域 ============ -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="32dp"
+        android:background="@drawable/bg_profile_card"
+        android:elevation="6dp">
+
+        <!-- 装饰背景（猫爪图案） -->
+        <ImageView
+            android:id="@+id/ivDecorationBackground"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:src="@drawable/ic_cat_paw2"
+            android:scaleType="fitCenter"
+            android:alpha="0.15"
+            app:layout_constraintWidth_percent="0.4"
+            app:layout_constraintHeight_percent="0.4"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintVertical_bias="0.0" />
+
+        <!-- 单词内容 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="32dp"
+            android:gravity="center"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.5">
+
+            <!-- 单词 -->
+            <TextView
+                android:id="@+id/tvWord"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="apple"
+                android:textColor="@color/color_text_primary"
+                android:textSize="48sp"
+                android:textStyle="bold"
+                android:fontFamily="@font/playpen_sans_semibold" />
+
+            <!-- 音标 -->
+            <TextView
+                android:id="@+id/tvPhonetic"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="/'æpl/"
+                android:textColor="@color/color_input_inactive"
+                android:textSize="20sp" />
+
+            <!-- 词性和释义 -->
+            <TextView
+                android:id="@+id/tvDefinition"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="n. 苹果"
+                android:textColor="@color/color_text_primary"
+                android:textSize="24sp"
+                android:gravity="center" />
+
+            <!-- 例句（可选） -->
+            <TextView
+                android:id="@+id/tvExample"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="I eat an apple every day."
+                android:textColor="#888888"
+                android:textSize="16sp"
+                android:gravity="center"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ============ 认识/不认识按钮 ============ -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:orientation="horizontal">
+
+        <!-- 不认识按钮 -->
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnUnfamiliar"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_button_outline"
+            android:text="不认识"
+            android:textColor="@color/color_text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:elevation="2dp"
+            android:stateListAnimator="@null" />
+
+        <!-- 认识按钮 -->
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnFamiliar"
+            android:layout_width="0dp"
+            android:layout_height="64dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/bg_button_primary"
+            android:text="认识"
+            android:textColor="@color/white"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:elevation="4dp"
+            android:stateListAnimator="@null" />
+    </LinearLayout>
+
+    <!-- ============ AI功能按钮 ============ -->
+    <LinearLayout
+        android:id="@+id/btnAIFeature"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_button_gold"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:elevation="2dp"
+        android:stateListAnimator="@null">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AI功能"
+            android:textColor="@color/color_text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+</LinearLayout>

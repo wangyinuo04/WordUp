@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/color_background_global"
+    android:orientation="vertical"
+    android:paddingHorizontal="24dp"
+    android:paddingTop="20dp">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp">
+
+        <ImageView
+            android:id="@+id/btnBack"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_arrow_right"
+            android:rotation="180" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:text="换书"
+            android:textColor="@color/color_text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="• 正在学习"
+        android:textColor="@color/color_text_primary"
+        android:textSize="16sp"
+        android:layout_marginBottom="12dp" />
+
+    <include layout="@layout/item_book" android:id="@+id/currentBookCard" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="我的书"
+        android:textColor="@color/color_text_primary"
+        android:textSize="16sp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="12dp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvMyBooks"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:id="@+id/btnAddBook"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginVertical="24dp"
+        android:background="@drawable/bg_button_outline"
+        android:paddingHorizontal="32dp"
+        android:paddingVertical="12dp"
+        android:gravity="center">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+ 添加"
+            android:textColor="@color/color_text_primary"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+</LinearLayout>

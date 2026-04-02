@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_bottom_sheet_white"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="20dp"
+        android:background="#EAE9DC" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="每日学习任务"
+        android:textColor="@color/color_text_primary"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:text="新词 : 复习词 比例"
+        android:textColor="@color/color_text_primary"
+        android:textSize="14sp" />
+
+    <RadioGroup
+        android:id="@+id/rgRatio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/rb12"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@drawable/selector_ratio_btn"
+            android:button="@null"
+            android:gravity="center"
+            android:text="1 : 2"
+            android:layout_marginEnd="8dp"
+            android:checked="true" />
+
+        <RadioButton
+            android:id="@+id/rb13"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@drawable/selector_ratio_btn"
+            android:button="@null"
+            android:gravity="center"
+            android:text="1 : 3"
+            android:layout_marginEnd="8dp" />
+
+        <RadioButton
+            android:id="@+id/rb14"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@drawable/selector_ratio_btn"
+            android:button="@null"
+            android:gravity="center"
+            android:text="1 : 4" />
+    </RadioGroup>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="新词数量"
+                android:textColor="#888888"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/etNewWords"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_edittext"
+                android:hint="例: 50"
+                android:inputType="number"
+                android:paddingHorizontal="12dp"
+                android:textColor="@color/color_text_primary" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="16dp"
+            android:layout_height="0dp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="复习词"
+                android:textColor="#888888"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvReviewWords"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:layout_marginTop="8dp"
+                android:background="#F5F5F5"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="12dp"
+                android:text="0"
+                android:textColor="@color/color_text_primary"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <androidx.appcompat.widget.AppCompatButton
+        android:id="@+id/btnConfirmPlan"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_marginTop="32dp"
+        android:background="@drawable/bg_button_primary"
+        android:text="确认修改"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold" />
+
+</LinearLayout>

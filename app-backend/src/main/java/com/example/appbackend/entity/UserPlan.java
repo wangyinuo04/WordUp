@@ -15,6 +15,13 @@ public class UserPlan {
     private Integer emotionRecogOn;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    // 新增：每日新词配额
+    private Integer dailyNewTarget;
+
+    // 新增：每日旧词复习配额
+    private Integer dailyReviewTarget;
+
+
 
     public Long getId() {
         return id;
@@ -86,5 +93,21 @@ public class UserPlan {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Integer getDailyNewTarget() {
+        return dailyNewTarget;
+    }
+
+    public void setDailyNewTarget(Integer dailyNewTarget) {
+        this.dailyNewTarget = dailyNewTarget;
+    }
+
+    public Integer getDailyReviewTarget() {
+        return dailyReviewTarget;
+    }
+
+    public void setDailyReviewTarget(Integer dailyReviewTarget) {
+        this.dailyReviewTarget = dailyReviewTarget;
     }
 }

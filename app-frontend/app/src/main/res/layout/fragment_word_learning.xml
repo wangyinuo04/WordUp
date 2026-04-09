@@ -42,113 +42,116 @@
                 android:fontFamily="@font/playpen_sans_semibold" />
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/layoutAntiSleep"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/bg_profile_card"
-            android:gravity="center"
-            android:paddingVertical="8dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="😺 防睡模式已开启"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <androidx.constraintlayout.widget.ConstraintLayout
-            android:id="@+id/cardWordContainer"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="20dp"
-            android:background="@drawable/bg_profile_card"
-            android:elevation="4dp">
+            android:layout_marginTop="20dp">
 
-            <LinearLayout
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/cardWordContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_profile_card"
+                android:elevation="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+                        <TextView
+                            android:id="@+id/tvWord"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="ancestry"
+                            android:textSize="36sp"
+                            android:fontFamily="@font/playpen_sans_semibold" />
+                        <TextView
+                            android:id="@+id/tvDifficulty"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:paddingHorizontal="6dp"
+                            android:text="难"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvHintClick"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="点击空白处显示释义"
+                        android:textSize="14sp"
+                        android:textColor="#A9A9A9"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:id="@+id/tvChineseMeaning"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textSize="16sp"
+                        android:textColor="#333333"
+                        android:visibility="gone"
+                        android:layout_marginTop="4dp"
+                        android:layout_marginBottom="8dp" />
+
+                    <LinearLayout
+                        android:id="@+id/layoutDefinitionContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:visibility="invisible"
+                        android:orientation="vertical"
+                        android:gravity="center">
+                        <TextView
+                            android:id="@+id/tvPhonetic"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="/ˈænsestri/" />
+                        <TextView
+                            android:id="@+id/tvDefinition"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="n. 祖先；血统"
+                            android:textSize="18sp" />
+                    </LinearLayout>
+
+                    <View
+                        android:id="@+id/viewClickTarget"
+                        android:layout_width="match_parent"
+                        android:layout_height="80dp" />
+                </LinearLayout>
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <TextView
+                android:id="@+id/tvTopAlertBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintBottom_toBottomOf="parent"
-                android:orientation="vertical"
+                android:layout_gravity="top"
+                android:layout_marginHorizontal="20dp"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_alert_rounded_red"
+                android:elevation="10dp"
                 android:gravity="center"
-                android:padding="16dp">
+                android:padding="12dp"
+                android:text="提示信息"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
 
-                <!-- 单词与难度标签行 -->
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-                    <TextView
-                        android:id="@+id/tvWord"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="ancestry"
-                        android:textSize="36sp"
-                        android:fontFamily="@font/playpen_sans_semibold" />
-                    <TextView
-                        android:id="@+id/tvDifficulty"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:paddingHorizontal="6dp"
-                        android:text="难"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <!-- 点击提示文字（浅灰色） -->
-                <TextView
-                    android:id="@+id/tvHintClick"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="点击空白处显示释义"
-                    android:textSize="14sp"
-                    android:textColor="#A9A9A9"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="4dp" />
-
-                <!-- 中文释义（初始为空字符串，且隐藏） -->
-                <TextView
-                    android:id="@+id/tvChineseMeaning"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text=""
-                    android:textSize="16sp"
-                    android:textColor="#333333"
-                    android:visibility="gone"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="8dp" />
-
-                <!-- 原有英文释义容器（音标+英文释义） -->
-                <LinearLayout
-                    android:id="@+id/layoutDefinitionContainer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:visibility="invisible"
-                    android:orientation="vertical"
-                    android:gravity="center">
-                    <TextView
-                        android:id="@+id/tvPhonetic"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="/ˈænsestri/" />
-                    <TextView
-                        android:id="@+id/tvDefinition"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="n. 祖先；血统"
-                        android:textSize="18sp" />
-                </LinearLayout>
-
-                <!-- 原有的点击覆盖层（保持兼容） -->
-                <View
-                    android:id="@+id/viewClickTarget"
-                    android:layout_width="match_parent"
-                    android:layout_height="80dp" />
-            </LinearLayout>
-        </androidx.constraintlayout.widget.ConstraintLayout>
+        </FrameLayout>
 
         <LinearLayout
             android:id="@+id/layoutBottomButtons"
@@ -172,6 +175,20 @@
                 android:background="@drawable/bg_button_primary"
                 android:text="认识"
                 android:textColor="@color/white" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layoutAntiSleep"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↑上滑设置AI功能的提示"
+                android:textColor="#999999"
+                android:textSize="12sp" />
         </LinearLayout>
 
     </LinearLayout>

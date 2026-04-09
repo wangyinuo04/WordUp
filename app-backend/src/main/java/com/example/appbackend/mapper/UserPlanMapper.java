@@ -26,11 +26,15 @@ public interface UserPlanMapper {
     int updateBookId(@Param("userId") Long userId, @Param("bookId") Long bookId);
 
     /**
-     * 更新用户每日学习目标总数（新词与复习词总和）
+     * 更新用户每日学习目标总数（包含拆分后的新词与复习词配额）
      */
-    @Update("UPDATE user_plan SET daily_target = #{dailyTarget} WHERE user_id = #{userId}")
-    int updateDailyTarget(@Param("userId") Long userId, @Param("dailyTarget") Integer dailyTarget);
-
+    @Update("UPDATE user_plan SET daily_target = #{dailyTarget}, daily_new_target = #{dailyNewTarget}, daily_review_target = #{dailyReviewTarget} WHERE user_id = #{userId}")
+    int updateDailyTarget(
+            @Param("userId") Long userId,
+            @Param("dailyTarget") Integer dailyTarget,
+            @Param("dailyNewTarget") Integer dailyNewTarget,
+            @Param("dailyReviewTarget") Integer dailyReviewTarget
+    );
     /**
      * 【新增】为新注册用户初始化默认的学习计划与 AI 设置
      * 注意：因为数据库中 book_id 为 NOT NULL，此处默认分配 book_id = 1 作为初始词书

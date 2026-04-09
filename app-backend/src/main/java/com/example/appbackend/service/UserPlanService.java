@@ -51,9 +51,10 @@ public class UserPlanService {
     /**
      * 更新用户的每日学习目标总数
      */
-    public boolean updateDailyTarget(Long userId, Integer dailyTarget) {
+    // 在 Service 或其实现类中，将原本的方法参数补充完整，并调用 Mapper
+    public void updateDailyTarget(Long userId, Integer dailyTarget, Integer dailyNewTarget, Integer dailyReviewTarget) {
         // 更新前先确保记录必定存在
         getPlanByUserId(userId);
-        return userPlanMapper.updateDailyTarget(userId, dailyTarget) > 0;
+        userPlanMapper.updateDailyTarget(userId, dailyTarget, dailyNewTarget, dailyReviewTarget);
     }
 }

@@ -67,24 +67,27 @@ public class UserPlanController {
      */
     @PostMapping("/daily-target/update")
     public Result<Void> updateDailyTarget(@RequestBody Map<String, Object> params) {
-        System.out.println("当前请求接收到的 userId 为: " + params.get("userId"));
-        Long userId;
-        Integer dailyTarget;
+        // 1. 拦截参数缺失
+        if (params.get("userId") == null || params.get("dailyTarget") == null ||
+                params.get("dailyNewTarget") == null || params.get("dailyReviewTarget") == null) {
+            return Result.error(400, "参数不完整：缺少配额字段");
+        }
+
         try {
-            userId = Long.valueOf(params.get("userId").toString());
-            dailyTarget = Integer.valueOf(params.get("dailyTarget").toString());
+            // 2. 安全解析从前端传来的 JSON 字段
+            Long userId = Long.valueOf(params.get("userId").toString());
+            Integer dailyTarget = Integer.valueOf(params.get("dailyTarget").toString());
+            Integer dailyNewTarget = Integer.valueOf(params.get("dailyNewTarget").toString());
+            Integer dailyReviewTarget = Integer.valueOf(params.get("dailyReviewTarget").toString());
+
+            // 3. 调用 Mapper 或 Service 执行数据库更新
+            // 注意：如果您有 UserPlanService 请调用 service，如果没有请直接调用 userPlanMapper
+            userPlanService.updateDailyTarget(userId, dailyTarget, dailyNewTarget, dailyReviewTarget);
+
+            return Result.success("计划更新成功", null);
         } catch (Exception e) {
-            return Result.error(400, "参数格式异常");
+            e.printStackTrace();
+            return Result.error(500, "修改计划失败，请检查数据格式");
         }
-
-        if (userId == null || dailyTarget == null) {
-            return Result.error(400, "用户ID与每日目标数不能为空");
-        }
-
-        boolean isSuccess = userPlanService.updateDailyTarget(userId, dailyTarget);
-        if (isSuccess) {
-            return Result.success("每日学习目标更新成功", null);
-        }
-        return Result.error(500, "每日学习目标更新失败");
     }
 }

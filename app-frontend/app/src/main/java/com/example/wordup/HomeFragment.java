@@ -45,6 +45,12 @@ public class HomeFragment extends Fragment {
     // 动态获取当前登录用户的 ID
     private long currentUserId;
 
+    // ==========================================
+    // 新增：独立缓存当前用户的新词配额与旧词配额
+    // ==========================================
+    private int currentDailyNewTarget = 10;    // 默认兜底值
+    private int currentDailyReviewTarget = 20; // 默认兜底值
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
@@ -63,13 +69,15 @@ public class HomeFragment extends Fragment {
         // 1. 学习模块：背诵新词逻辑绑定与跳转
         View btnLearnNew = view.findViewById(R.id.btnLearnNew);
         if (btnLearnNew != null) {
-            btnLearnNew.setOnClickListener(v -> handleLearningJump(view, false));
+            // 传入 false 表示新词模式
+            btnLearnNew.setOnClickListener(v -> handleLearningJump(false));
         }
 
         // 2. 学习模块：复习旧词逻辑绑定与跳转
         View btnReviewOld = view.findViewById(R.id.btnReviewOld);
         if (btnReviewOld != null) {
-            btnReviewOld.setOnClickListener(v -> handleLearningJump(view, true));
+            // 传入 true 表示复习模式
+            btnReviewOld.setOnClickListener(v -> handleLearningJump(true));
         }
 
         // 3. 计划变更模块：展示底部配置弹窗
@@ -102,7 +110,7 @@ public class HomeFragment extends Fragment {
         super.onResume();
         // 只有在获取到有效用户 ID 时才发起网络请求
         if (currentUserId != -1L) {
-            refreshAiSettingsStatus(); // 该接口同时负责拉取并渲染 dailyTarget
+            refreshAiSettingsStatus(); // 该接口同时负责拉取并渲染 dailyTarget 和拆分后的配额
             refreshCurrentBookName();
         }
         if (tvDate != null) {
@@ -156,7 +164,7 @@ public class HomeFragment extends Fragment {
     }
 
     /**
-     * 请求后端数据并渲染 AI 状态 UI 面板，同时更新今日待背单词数量
+     * 请求后端数据并渲染 AI 状态 UI 面板，同时更新独立配额缓存
      */
     private void refreshAiSettingsStatus() {
         AiNetworkHelper.getAiSettings(currentUserId, new AiNetworkHelper.GetSettingsCallback() {
@@ -170,7 +178,17 @@ public class HomeFragment extends Fragment {
                 renderSingleStatus(ivStatusAISentence, tvStatusAISentence, aiSentenceOn, "AI造句");
                 renderSingleStatus(ivStatusEmotion, tvStatusEmotion, emotionOn, "情绪识别");
 
-                // 更新今日待背单词总数
+                // ==========================================
+                // 核心：从后端拉取并缓存拆分后的独立配额
+                // ==========================================
+                if (plan.getDailyNewTarget() != null) {
+                    currentDailyNewTarget = plan.getDailyNewTarget();
+                }
+                if (plan.getDailyReviewTarget() != null) {
+                    currentDailyReviewTarget = plan.getDailyReviewTarget();
+                }
+
+                // 更新 UI 上的今日待背总数
                 if (tvTodayWords != null && plan.getDailyTarget() != null) {
                     tvTodayWords.setText(String.valueOf(plan.getDailyTarget()));
                 }
@@ -196,29 +214,25 @@ public class HomeFragment extends Fragment {
         }
     }
 
-    private void handleLearningJump(View view, boolean isReviewMode) {
-        int totalWords = 150;
-        try {
-            if (tvTodayWords != null) {
-                totalWords = Integer.parseInt(tvTodayWords.getText().toString());
-            }
-        } catch (NumberFormatException e) {
-            totalWords = 150;
-        }
+    // ========================================================================
+    // 核心修改：动态分配路由跳转时的右上角目标数字
+    // ========================================================================
+    private void handleLearningJump(boolean isReviewMode) {
+        // 根据不同模式传入专属的数量，实现右上角独立显示 (例如: /10 或 /20)
+        int targetWords = isReviewMode ? currentDailyReviewTarget : currentDailyNewTarget;
 
-        WordLearningFragment fragment = WordLearningFragment.newInstance(isReviewMode, totalWords);
+        WordLearningFragment fragment = WordLearningFragment.newInstance(isReviewMode, targetWords);
         if (getActivity() != null) {
             getActivity().getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, fragment)
+                    .replace(R.id.fragment_container, fragment) // 请确保 R.id.fragment_container 是您的实际容器ID
                     .addToBackStack(null)
                     .commit();
         }
     }
 
     // ========================================================================
-    // 弹窗与原有业务逻辑
+    // 弹窗与更新业务逻辑
     // ========================================================================
-
     private void showPlanBottomSheet() {
         BottomSheetDialog bottomSheet = new BottomSheetDialog(requireContext());
         View sheetView = getLayoutInflater().inflate(R.layout.layout_change_plan_bottom_sheet, null);
@@ -263,11 +277,18 @@ public class HomeFragment extends Fragment {
             int reviewCount = newCount * currentRatio[0];
             int totalTarget = newCount + reviewCount;
 
-            // 提交网络请求更新学习计划
-            PlanNetworkHelper.updateDailyTarget(currentUserId, totalTarget, new PlanNetworkHelper.UpdatePlanCallback() {
+            // 核心修改：提交完整的拆分配额参数到后端
+            PlanNetworkHelper.updateDailyTarget(currentUserId, totalTarget, newCount, reviewCount, new PlanNetworkHelper.UpdatePlanCallback() {
                 @Override
                 public void onSuccess() {
-                    Toast.makeText(getContext(), "计划已更新，每日总目标：" + totalTarget, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "计划已更新", Toast.LENGTH_SHORT).show();
+
+                    // ==========================================
+                    // 局部刷新：更新本地缓存变量，确保下次点击立刻生效
+                    // ==========================================
+                    currentDailyNewTarget = newCount;
+                    currentDailyReviewTarget = reviewCount;
+
                     // 局部刷新 UI 数值
                     if (tvTodayWords != null) {
                         tvTodayWords.setText(String.valueOf(totalTarget));

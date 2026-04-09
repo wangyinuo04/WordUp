@@ -9,6 +9,10 @@ public class UserPlan {
     private Integer antiSleepOn;
     private Integer aiSentenceOn;
     private Integer emotionRecogOn;
+    // 新增：每日新词目标
+    private Integer dailyNewTarget;
+    // 新增：每日复习目标
+    private Integer dailyReviewTarget;
 
     public Long getUserId() {
         return userId;
@@ -48,5 +52,21 @@ public class UserPlan {
 
     public void setEmotionRecogOn(Integer emotionRecogOn) {
         this.emotionRecogOn = emotionRecogOn;
+    }
+
+    public Integer getDailyNewTarget() {
+        return dailyNewTarget;
+    }
+
+    public void setDailyNewTarget(Integer dailyNewTarget) {
+        this.dailyNewTarget = dailyNewTarget;
+    }
+
+    public Integer getDailyReviewTarget() {
+        return dailyReviewTarget;
+    }
+
+    public void setDailyReviewTarget(Integer dailyReviewTarget) {
+        this.dailyReviewTarget = dailyReviewTarget;
     }
 }

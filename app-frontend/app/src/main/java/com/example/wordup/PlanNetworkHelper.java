@@ -22,9 +22,11 @@ public class PlanNetworkHelper {
      *
      * @param userId      目标用户 ID
      * @param dailyTarget 计算后的每日待背总目标数
+     * @param newCount    每日新词目标数
+     * @param reviewCount 每日复习目标数
      * @param callback    异步回调接口
      */
-    public static void updateDailyTarget(long userId, int dailyTarget, UpdatePlanCallback callback) {
+    public static void updateDailyTarget(long userId, int dailyTarget, int newCount, int reviewCount, UpdatePlanCallback callback) {
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
@@ -40,6 +42,9 @@ public class PlanNetworkHelper {
                 JSONObject jsonParam = new JSONObject();
                 jsonParam.put("userId", userId);
                 jsonParam.put("dailyTarget", dailyTarget);
+                // 追加拆分后的独立目标配额
+                jsonParam.put("dailyNewTarget", newCount);
+                jsonParam.put("dailyReviewTarget", reviewCount);
 
                 try (OutputStream os = connection.getOutputStream()) {
                     byte[] input = jsonParam.toString().getBytes("utf-8");

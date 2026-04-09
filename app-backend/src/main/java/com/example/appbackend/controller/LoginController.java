@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.example.appbackend.Result;
 import com.example.appbackend.entity.User;
 import com.example.appbackend.mapper.UserMapper;
+import com.example.appbackend.mapper.UserPlanMapper; // 新增引入
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,9 +27,12 @@ public class LoginController {
     private UserMapper userMapper;
 
     @Autowired
+    private UserPlanMapper userPlanMapper; // 新增注入用于初始化设置
+
+    @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    // 登录接口
+    // 登录接口 (保留了板块一中新增的 userId 下发逻辑)
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestParam("username") String username, @RequestParam("password") String password)  {
 
@@ -48,16 +52,16 @@ public class LoginController {
         // 4. 将 Token 存入 Redis，设置 2 小时过期时长
         stringRedisTemplate.opsForValue().set("token:" + username, token, 2, TimeUnit.HOURS);
 
-        // 5. 封装多维度返回数据，将 Token 与用户已有信息（如头像）同步下发
+        // 5. 封装多维度返回数据
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("token", token);
-        // 若数据库中无头像记录，则返回空字符串避免前端解析异常
+        responseData.put("userId", user.getId()); // 下发真实用户ID
         responseData.put("avatar_url", user.getAvatarUrl() != null ? user.getAvatarUrl() : "");
 
         return Result.success("登录成功！", responseData);
     }
 
-    // 注册接口
+    // 注册接口 (新增初始化 user_plan 逻辑)
     @PostMapping("/register")
     public Result<Object> register(@RequestParam("username") String username, @RequestParam("password") String password) {
 
@@ -75,8 +79,15 @@ public class LoginController {
         newUser.setUsername(username);
         newUser.setPassword(password);
 
-        // 3. 存入数据库
+        // 3. 存入 user 表
         userMapper.insert(newUser);
+
+        // 4. 获取 MyBatis-Plus 自动回写的自增主键 ID
+        Long newUserId = newUser.getId().longValue();
+
+        // 5. 【修复核心】在 user_plan 表中为该新用户初始化默认配置记录
+        // 传入新用户 ID，并预设分配 ID 为 1 的词书作为初始词书
+        userPlanMapper.insertDefaultPlan(newUserId, 1L);
 
         return Result.success("注册成功！请直接点击登录体验。", null);
     }
@@ -90,31 +101,25 @@ public class LoginController {
         }
 
         try {
-            // 1. 确定保存图片的本地物理路径
             String uploadDir = System.getProperty("user.dir") + File.separator + "uploads" + File.separator;
             File dir = new File(uploadDir);
             if (!dir.exists()) {
                 dir.mkdirs();
             }
 
-            // 2. 重命名文件以防冲突
             String originalFilename = file.getOriginalFilename();
             String suffix = originalFilename != null ? originalFilename.substring(originalFilename.lastIndexOf(".")) : ".jpg";
             String newFilename = UUID.randomUUID().toString().replace("-", "") + suffix;
 
-            // 3. 将文件写入硬盘
             File dest = new File(uploadDir + newFilename);
             file.transferTo(dest);
 
-            // 4. 拼接网络访问 URL (本地调试环境)
             String avatarUrl = "http://10.0.2.2:8080/uploads/" + newFilename;
 
-            // 5. 更新数据库中的 avatar_url 字段
             UpdateWrapper<User> updateWrapper = new UpdateWrapper<>();
             updateWrapper.eq("username", username).set("avatar_url", avatarUrl);
             userMapper.update(null, updateWrapper);
 
-            // 6. 返回图片 URL
             return Result.success("头像上传成功", avatarUrl);
 
         } catch (IOException e) {

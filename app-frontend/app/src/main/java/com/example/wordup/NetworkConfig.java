@@ -11,4 +11,16 @@ public class NetworkConfig {
     // 拼接具体的接口路径
     public static final String UPDATE_PROFILE_URL = BASE_URL + "/updateProfile";
     public static final String UPLOAD_AVATAR_URL = BASE_URL + "/uploadAvatar";
+
+    // AI 设置相关接口
+    public static final String GET_AI_SETTINGS_URL = BASE_URL + "/api/plan/ai-settings";
+    public static final String UPDATE_AI_SETTINGS_URL = BASE_URL + "/api/plan/ai-settings/update";
+
+    // 词书相关接口
+    public static final String GET_BOOK_LIST_URL = BASE_URL + "/api/book/list";
+    public static final String GET_CURRENT_BOOK_URL = BASE_URL + "/api/book/current";
+    public static final String UPDATE_BOOK_URL = BASE_URL + "/api/plan/book/update";
+
+    // 学习计划相关接口
+    public static final String UPDATE_DAILY_TARGET_URL = BASE_URL + "/api/plan/daily-target/update";
 }

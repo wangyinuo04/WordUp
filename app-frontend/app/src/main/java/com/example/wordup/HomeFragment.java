@@ -1,6 +1,8 @@
 package com.example.wordup;
 
+import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -9,6 +11,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -20,16 +23,31 @@ import androidx.fragment.app.Fragment;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 /**
  * 首页Fragment的业务逻辑控制类。
  * 负责主页视图的加载、核心交互事件的处理以及各功能模块的路由跳转逻辑。
  */
 public class HomeFragment extends Fragment {
 
+    // 日期、书名及学习目标显示的 UI 组件
+    private TextView tvDate;
+    private TextView tvCurrentBook;
+    private TextView tvTodayWords;
+
+    // AI 设置状态栏对应的 UI 组件
+    private ImageView ivStatusAntiDoze, ivStatusAISentence, ivStatusEmotion;
+    private TextView tvStatusAntiDoze, tvStatusAISentence, tvStatusEmotion;
+
+    // 动态获取当前登录用户的 ID
+    private long currentUserId;
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        // 实例化并返回该Fragment的视图对象
         return inflater.inflate(R.layout.fragment_home, container, false);
     }
 
@@ -37,66 +55,21 @@ public class HomeFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        // 从 SharedPreferences 动态加载当前用户的真实 ID
+        currentUserId = requireActivity().getSharedPreferences("MyAppConfig", Context.MODE_PRIVATE).getLong("userId", -1L);
+
+        initViews(view);
+
         // 1. 学习模块：背诵新词逻辑绑定与跳转
         View btnLearnNew = view.findViewById(R.id.btnLearnNew);
         if (btnLearnNew != null) {
-            btnLearnNew.setOnClickListener(v -> {
-                TextView tvTodayWords = view.findViewById(R.id.tvTodayWords);
-                int totalWords = 150; // 设定默认单词数量
-
-                // 尝试从UI组件中提取用户当前的每日单词目标
-                try {
-                    if (tvTodayWords != null) {
-                        String wordsText = tvTodayWords.getText().toString();
-                        totalWords = Integer.parseInt(wordsText);
-                    }
-                } catch (NumberFormatException e) {
-                    // 若解析失败，采用默认值确保流程不中断
-                    totalWords = 150;
-                }
-
-                // 实例化学习页面组件并传递所需的参数状态（false 表示新词模式）
-                WordLearningFragment fragment = WordLearningFragment.newInstance(false, totalWords);
-
-                // 执行 Fragment 路由跳转事务并加入回退栈
-                if (getActivity() != null) {
-                    getActivity().getSupportFragmentManager().beginTransaction()
-                            .replace(R.id.fragment_container, fragment)
-                            .addToBackStack(null)
-                            .commit();
-                }
-            });
+            btnLearnNew.setOnClickListener(v -> handleLearningJump(view, false));
         }
 
         // 2. 学习模块：复习旧词逻辑绑定与跳转
         View btnReviewOld = view.findViewById(R.id.btnReviewOld);
         if (btnReviewOld != null) {
-            btnReviewOld.setOnClickListener(v -> {
-                TextView tvTodayWords = view.findViewById(R.id.tvTodayWords);
-                int totalWords = 150; // 设定默认单词数量
-
-                // 尝试从UI组件中提取用户当前的每日单词目标
-                try {
-                    if (tvTodayWords != null) {
-                        String wordsText = tvTodayWords.getText().toString();
-                        totalWords = Integer.parseInt(wordsText);
-                    }
-                } catch (NumberFormatException e) {
-                    // 若解析失败，采用默认值确保流程不中断
-                    totalWords = 150;
-                }
-
-                // 实例化学习页面组件并传递所需的参数状态（true 表示复习模式）
-                WordLearningFragment fragment = WordLearningFragment.newInstance(true, totalWords);
-
-                // 执行 Fragment 路由跳转事务并加入回退栈
-                if (getActivity() != null) {
-                    getActivity().getSupportFragmentManager().beginTransaction()
-                            .replace(R.id.fragment_container, fragment)
-                            .addToBackStack(null)
-                            .commit();
-                }
-            });
+            btnReviewOld.setOnClickListener(v -> handleLearningJump(view, true));
         }
 
         // 3. 计划变更模块：展示底部配置弹窗
@@ -109,7 +82,6 @@ public class HomeFragment extends Fragment {
         AppCompatButton btnSettingsAI = view.findViewById(R.id.btnSettingsAI);
         if (btnSettingsAI != null) {
             btnSettingsAI.setOnClickListener(v -> {
-                // 构建并执行显式 Intent 跳转指令
                 Intent intent = new Intent(requireActivity(), AISettingsActivity.class);
                 startActivity(intent);
             });
@@ -119,58 +91,164 @@ public class HomeFragment extends Fragment {
         View btnChangeBook = view.findViewById(R.id.btnChangeBook);
         if (btnChangeBook != null) {
             btnChangeBook.setOnClickListener(v -> {
-                // 实例化 Intent，指向 ChangeBookActivity 进行视图跳转
                 Intent intent = new Intent(requireActivity(), ChangeBookActivity.class);
                 startActivity(intent);
             });
         }
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        // 只有在获取到有效用户 ID 时才发起网络请求
+        if (currentUserId != -1L) {
+            refreshAiSettingsStatus(); // 该接口同时负责拉取并渲染 dailyTarget
+            refreshCurrentBookName();
+        }
+        if (tvDate != null) {
+            updateDateText();
+        }
+    }
+
     /**
-     * 实例化并展示更改计划的底部抽屉弹窗。
-     * 包含输入监听与动态复习数量的计算逻辑。
+     * 集中初始化所有视图控件引用
      */
+    private void initViews(View view) {
+        tvDate = view.findViewById(R.id.tvDate);
+        tvCurrentBook = view.findViewById(R.id.tvCurrentBook);
+        tvTodayWords = view.findViewById(R.id.tvTodayWords);
+
+        ivStatusAntiDoze = view.findViewById(R.id.ivStatusAntiDoze);
+        tvStatusAntiDoze = view.findViewById(R.id.tvStatusAntiDoze);
+
+        ivStatusAISentence = view.findViewById(R.id.ivStatusAISentence);
+        tvStatusAISentence = view.findViewById(R.id.tvStatusAISentence);
+
+        ivStatusEmotion = view.findViewById(R.id.ivStatusEmotion);
+        tvStatusEmotion = view.findViewById(R.id.tvStatusEmotion);
+
+        if (tvDate != null) updateDateText();
+    }
+
+    private void updateDateText() {
+        SimpleDateFormat sdf = new SimpleDateFormat("MM/dd EEE.", Locale.ENGLISH);
+        String currentDate = sdf.format(new Date());
+        tvDate.setText(currentDate);
+    }
+
+    /**
+     * 请求后端获取当前正在学习的词书名称并渲染
+     */
+    private void refreshCurrentBookName() {
+        if (tvCurrentBook == null) return;
+
+        BookNetworkHelper.getCurrentBook(currentUserId, new BookNetworkHelper.GetCurrentBookCallback() {
+            @Override
+            public void onSuccess(String bookName) {
+                tvCurrentBook.setText("《" + bookName + "》");
+            }
+
+            @Override
+            public void onFailure(String errorMsg) {
+                tvCurrentBook.setText("《暂无词书》");
+            }
+        });
+    }
+
+    /**
+     * 请求后端数据并渲染 AI 状态 UI 面板，同时更新今日待背单词数量
+     */
+    private void refreshAiSettingsStatus() {
+        AiNetworkHelper.getAiSettings(currentUserId, new AiNetworkHelper.GetSettingsCallback() {
+            @Override
+            public void onSuccess(UserPlan plan) {
+                boolean antiDozeOn = plan.getAntiSleepOn() != null && plan.getAntiSleepOn() == 1;
+                boolean aiSentenceOn = plan.getAiSentenceOn() != null && plan.getAiSentenceOn() == 1;
+                boolean emotionOn = plan.getEmotionRecogOn() != null && plan.getEmotionRecogOn() == 1;
+
+                renderSingleStatus(ivStatusAntiDoze, tvStatusAntiDoze, antiDozeOn, "防瞌睡");
+                renderSingleStatus(ivStatusAISentence, tvStatusAISentence, aiSentenceOn, "AI造句");
+                renderSingleStatus(ivStatusEmotion, tvStatusEmotion, emotionOn, "情绪识别");
+
+                // 更新今日待背单词总数
+                if (tvTodayWords != null && plan.getDailyTarget() != null) {
+                    tvTodayWords.setText(String.valueOf(plan.getDailyTarget()));
+                }
+            }
+
+            @Override
+            public void onFailure(String errorMsg) {
+                // 静默处理
+            }
+        });
+    }
+
+    private void renderSingleStatus(ImageView iv, TextView tv, boolean isOn, String featureName) {
+        if (iv == null || tv == null) return;
+        if (isOn) {
+            iv.setImageResource(R.drawable.ic_status_check);
+            tv.setText("已开启" + featureName);
+            tv.setTextColor(Color.parseColor("#666666"));
+        } else {
+            iv.setImageResource(R.drawable.ic_status_cross);
+            tv.setText("未开启" + featureName);
+            tv.setTextColor(Color.parseColor("#999999"));
+        }
+    }
+
+    private void handleLearningJump(View view, boolean isReviewMode) {
+        int totalWords = 150;
+        try {
+            if (tvTodayWords != null) {
+                totalWords = Integer.parseInt(tvTodayWords.getText().toString());
+            }
+        } catch (NumberFormatException e) {
+            totalWords = 150;
+        }
+
+        WordLearningFragment fragment = WordLearningFragment.newInstance(isReviewMode, totalWords);
+        if (getActivity() != null) {
+            getActivity().getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.fragment_container, fragment)
+                    .addToBackStack(null)
+                    .commit();
+        }
+    }
+
+    // ========================================================================
+    // 弹窗与原有业务逻辑
+    // ========================================================================
+
     private void showPlanBottomSheet() {
         BottomSheetDialog bottomSheet = new BottomSheetDialog(requireContext());
         View sheetView = getLayoutInflater().inflate(R.layout.layout_change_plan_bottom_sheet, null);
         bottomSheet.setContentView(sheetView);
 
-        // 初始化弹窗内的组件引用
         EditText etNewWords = sheetView.findViewById(R.id.etNewWords);
         TextView tvReviewWords = sheetView.findViewById(R.id.tvReviewWords);
         RadioGroup rgRatio = sheetView.findViewById(R.id.rgRatio);
         Button btnConfirm = sheetView.findViewById(R.id.btnConfirmPlan);
 
-        // 设定初始默认复习比例因子 (1:2)
         final int[] currentRatio = {2};
 
-        // 绑定比例选择状态变更监听器
         rgRatio.setOnCheckedChangeListener((group, checkedId) -> {
-            if (checkedId == R.id.rb12) {
-                currentRatio[0] = 2;
-            } else if (checkedId == R.id.rb13) {
-                currentRatio[0] = 3;
-            } else if (checkedId == R.id.rb14) {
-                currentRatio[0] = 4;
-            }
+            if (checkedId == R.id.rb12) currentRatio[0] = 2;
+            else if (checkedId == R.id.rb13) currentRatio[0] = 3;
+            else if (checkedId == R.id.rb14) currentRatio[0] = 4;
             updateReviewCalculation(etNewWords, tvReviewWords, currentRatio[0]);
         });
 
-        // 绑定新词数量输入框的文本变更监听器，实现数据的实时联动
         etNewWords.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 updateReviewCalculation(etNewWords, tvReviewWords, currentRatio[0]);
             }
-
             @Override
             public void afterTextChanged(Editable s) {}
         });
 
-        // 绑定确认修改按钮的点击事件监听器
         btnConfirm.setOnClickListener(v -> {
             String newWordsStr = etNewWords.getText().toString();
             if (newWordsStr.isEmpty()) {
@@ -178,16 +256,33 @@ public class HomeFragment extends Fragment {
                 return;
             }
 
+            // 禁用按钮防连点
+            btnConfirm.setEnabled(false);
+
             int newCount = Integer.parseInt(newWordsStr);
             int reviewCount = newCount * currentRatio[0];
             int totalTarget = newCount + reviewCount;
 
-            // 预留接口：调用后端服务更新数据库 user_plan 表中的 daily_target 数据
-            Toast.makeText(getContext(), "计划已更新，每日总目标：" + totalTarget, Toast.LENGTH_SHORT).show();
-            bottomSheet.dismiss();
+            // 提交网络请求更新学习计划
+            PlanNetworkHelper.updateDailyTarget(currentUserId, totalTarget, new PlanNetworkHelper.UpdatePlanCallback() {
+                @Override
+                public void onSuccess() {
+                    Toast.makeText(getContext(), "计划已更新，每日总目标：" + totalTarget, Toast.LENGTH_SHORT).show();
+                    // 局部刷新 UI 数值
+                    if (tvTodayWords != null) {
+                        tvTodayWords.setText(String.valueOf(totalTarget));
+                    }
+                    bottomSheet.dismiss();
+                }
+
+                @Override
+                public void onFailure(String errorMsg) {
+                    Toast.makeText(getContext(), "修改失败: " + errorMsg, Toast.LENGTH_SHORT).show();
+                    btnConfirm.setEnabled(true);
+                }
+            });
         });
 
-        // 绑定弹窗展示监听器以处理背景透明度，确保自定义圆角样式正常渲染
         bottomSheet.setOnShowListener(dialog -> {
             BottomSheetDialog d = (BottomSheetDialog) dialog;
             View bottomSheetInternal = d.findViewById(com.google.android.material.R.id.design_bottom_sheet);
@@ -196,17 +291,9 @@ public class HomeFragment extends Fragment {
             }
         });
 
-        // 执行弹窗展示操作
         bottomSheet.show();
     }
 
-    /**
-     * 根据当前输入的新词数量与设定的比例因子，动态计算并更新复习词数的展示状态。
-     *
-     * @param etNew    新词数量输入组件
-     * @param tvReview 复习词数展示组件
-     * @param ratio    当前的复习比例因子
-     */
     private void updateReviewCalculation(EditText etNew, TextView tvReview, int ratio) {
         String input = etNew.getText().toString();
         if (!input.isEmpty()) {

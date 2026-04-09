@@ -105,6 +105,8 @@ public class EditProfileActivity extends AppCompatActivity {
 
         String savedAvatarUrl = prefs.getString("avatar_url", "");
         if (!savedAvatarUrl.isEmpty()) {
+            // 替换虚拟IP为统一配置的真实局域网IP，以确保物理设备正常加载图片
+            savedAvatarUrl = savedAvatarUrl.replace("http://10.0.2.2:8080", NetworkConfig.BASE_URL);
             Glide.with(this).load(savedAvatarUrl).into(ivEditAvatar);
         }
 
@@ -164,9 +166,9 @@ public class EditProfileActivity extends AppCompatActivity {
                 .addFormDataPart("username", username)
                 .build();
 
-        // 4. 发起网络请求
+        // 4. 发起网络请求，调用 NetworkConfig 中的统一接口常量
         Request request = new Request.Builder()
-                .url("http://10.0.2.2:8080/uploadAvatar")
+                .url(NetworkConfig.UPLOAD_AVATAR_URL)
                 .post(requestBody)
                 .build();
 
@@ -190,6 +192,9 @@ public class EditProfileActivity extends AppCompatActivity {
                             try {
                                 // 提取真实的图片 URL
                                 String avatarUrl = jsonObject.getString("data");
+
+                                // 拦截并替换虚拟IP为统一配置的真实局域网IP
+                                avatarUrl = avatarUrl.replace("http://10.0.2.2:8080", NetworkConfig.BASE_URL);
 
                                 // 将正确的 URL 保存到本地缓存
                                 prefs.edit().putString("avatar_url", avatarUrl).apply();

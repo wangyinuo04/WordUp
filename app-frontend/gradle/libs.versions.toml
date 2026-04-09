@@ -15,6 +15,7 @@ volley = "1.2.1"
 tracingPerfettoHandshake = "1.0.1"
 compiler = "3.2.0-alpha11"
 cronetEmbedded = "143.7445.0"
+coreKtxVersion = "1.10.1"
 
 [libraries]
 # 依赖库定义 - 键名已针对您的代码进行对齐
@@ -31,6 +32,7 @@ volley = { group = "com.android.volley", name = "volley", version.ref = "volley"
 androidx-tracing-perfetto-handshake = { group = "androidx.tracing", name = "tracing-perfetto-handshake", version.ref = "tracingPerfettoHandshake" }
 androidx-compiler = { group = "androidx.databinding", name = "compiler", version.ref = "compiler" }
 cronet-embedded = { group = "org.chromium.net", name = "cronet-embedded", version.ref = "cronetEmbedded" }
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtxVersion" }
 
 [plugins]
 # 插件定义

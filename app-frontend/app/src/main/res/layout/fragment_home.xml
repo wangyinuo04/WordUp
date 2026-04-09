@@ -37,16 +37,16 @@
             android:paddingVertical="12dp">
 
             <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:gravity="center_vertical">
-                <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_status_check" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="已开启防瞌睡" android:textColor="#666666" android:textSize="11sp" />
+                <ImageView android:id="@+id/ivStatusAntiDoze" android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_status_check" />
+                <TextView android:id="@+id/tvStatusAntiDoze" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="已开启防瞌睡" android:textColor="#666666" android:textSize="11sp" />
             </LinearLayout>
             <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:gravity="center_vertical">
-                <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_status_check" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="已开启AI造句" android:textColor="#666666" android:textSize="11sp" />
+                <ImageView android:id="@+id/ivStatusAISentence" android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_status_check" />
+                <TextView android:id="@+id/tvStatusAISentence" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="已开启AI造句" android:textColor="#666666" android:textSize="11sp" />
             </LinearLayout>
             <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:gravity="center_vertical">
-                <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_status_cross" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="未开启情绪识别" android:textColor="#999999" android:textSize="11sp" />
+                <ImageView android:id="@+id/ivStatusEmotion" android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_status_cross" />
+                <TextView android:id="@+id/tvStatusEmotion" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:text="未开启情绪识别" android:textColor="#999999" android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>

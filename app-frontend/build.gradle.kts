@@ -2,4 +2,5 @@
 plugins {
     // 引用版本目录中定义的插件
     alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.kotlin.android) apply false
 }

@@ -15,6 +15,12 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+
 
 # MyBatis-Plus 配置（建议加上，方便调试）
 mybatis-plus:

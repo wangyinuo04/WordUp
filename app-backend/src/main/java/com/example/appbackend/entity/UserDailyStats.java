@@ -4,28 +4,29 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+/**
+ * 每日学习数据聚合表实体类
+ */
 @Data
-@TableName("user_daily_stats") // 告诉 MyBatis-Plus 对应哪张数据库表
+@TableName("user_daily_stats")
 public class UserDailyStats {
-
-    @TableId(type = IdType.AUTO) // 主键且自增
+    @TableId(type = IdType.AUTO)
     private Long id;
-
-    // --- 核心关联字段 ---
-    private Integer userId; // 关联 User 表的 id (注意类型保持为 Integer)
-
-    private LocalDate recordDate; // 记录日期 (精确到天，例如 2024-03-16)
-
-    // --- 统计数据字段 ---
-    private Integer learnedCount; // 当日新学单词数
-    private Integer reviewedCount; // 当日复习单词数
-    private Integer studyMinutes; // 当日学习时长(分钟)
-
-    // --- 审计时间字段 ---
-    private LocalDateTime createdAt; // 创建时间
-    private LocalDateTime updatedAt; // 更新时间
+    private Long userId;
+    private LocalDate recordDate;
+    private Integer learnedCount;
+    private Integer reviewedCount;
+    private Integer studyMinutes;
+    private Integer sleepyCount;
+    private Integer unfocusedCount;
+    private Integer happyMinutes;
+    private Integer negativeMinutes;
+    private Integer aiHardWords;
+    private Boolean hardPushed;
+    private Boolean easyPushed;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

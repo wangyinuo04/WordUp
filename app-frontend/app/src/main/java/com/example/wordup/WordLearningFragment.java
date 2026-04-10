@@ -48,7 +48,7 @@ import java.util.concurrent.Executors;
 
 /**
  * 单词学习页面 Fragment。
- * 已完善：AI功能面板底部指示器（圆点）动态联动逻辑。
+ * 已完善：AI功能面板底部指示器联动及显隐控制逻辑，及状态驱动的AI造句面板真实状态控制。
  */
 public class WordLearningFragment extends Fragment {
 
@@ -69,7 +69,8 @@ public class WordLearningFragment extends Fragment {
     private ViewPager2 vpAiPanels;
     private PreviewView previewView;
 
-    // AI面板底部圆点指示器数组
+    // AI面板底部圆点指示器的父容器与子视图数组
+    private LinearLayout layoutAiIndicators;
     private View[] indicatorDots;
 
     private FrameLayout containerCameraFatigue;
@@ -80,10 +81,6 @@ public class WordLearningFragment extends Fragment {
     private FrameLayout containerCameraEmotion;
     private TextView tvEmotionState;
 
-    private EditText etAiWordsInput;
-    private AppCompatButton btnAiGenerate;
-    private TextView tvAiSentenceResult;
-
     private float startY;
     private int totalWords = 150;
     private boolean isReviewMode = false;
@@ -91,6 +88,7 @@ public class WordLearningFragment extends Fragment {
     private boolean isAIFeatureEnabled = false;
     private boolean isAntiDozeOn = false;
     private boolean isEmotionOn = false;
+    private boolean isAiSentenceOn = false;
 
     private Toast mSingletonToast;
     private long lastClickTime = 0;
@@ -211,8 +209,10 @@ public class WordLearningFragment extends Fragment {
             public void onSuccess(UserPlan plan) {
                 isAntiDozeOn = (plan.getAntiSleepOn() != null && plan.getAntiSleepOn() == 1);
                 isEmotionOn = (plan.getEmotionRecogOn() != null && plan.getEmotionRecogOn() == 1);
+                isAiSentenceOn = (plan.getAiSentenceOn() != null && plan.getAiSentenceOn() == 1);
 
-                isAIFeatureEnabled = isAntiDozeOn || isEmotionOn;
+                // 只要有任意一项AI功能开启，即视为AI总功能面板开启
+                isAIFeatureEnabled = isAntiDozeOn || isEmotionOn || isAiSentenceOn;
                 applyAiSettingsToUI();
             }
 
@@ -227,6 +227,8 @@ public class WordLearningFragment extends Fragment {
         if (!isAIFeatureEnabled) {
             if (layoutAiDisabled != null) layoutAiDisabled.setVisibility(View.VISIBLE);
             if (vpAiPanels != null) vpAiPanels.setVisibility(View.GONE);
+            // 同步隐藏圆点指示器父容器
+            if (layoutAiIndicators != null) layoutAiIndicators.setVisibility(View.GONE);
 
             if (aiAnalyzer != null) {
                 aiAnalyzer.setFatigueDetectionEnabled(false);
@@ -235,6 +237,8 @@ public class WordLearningFragment extends Fragment {
         } else {
             if (layoutAiDisabled != null) layoutAiDisabled.setVisibility(View.GONE);
             if (vpAiPanels != null) vpAiPanels.setVisibility(View.VISIBLE);
+            // 同步显示圆点指示器父容器
+            if (layoutAiIndicators != null) layoutAiIndicators.setVisibility(View.VISIBLE);
 
             if (aiAnalyzer != null) {
                 aiAnalyzer.setFatigueDetectionEnabled(isAntiDozeOn);
@@ -244,6 +248,11 @@ public class WordLearningFragment extends Fragment {
             }
 
             updateAIStatus(1.0f, 0.5f);
+        }
+
+        // 通知 Adapter 刷新数据，确保造句面板在划到时能绑定到最新状态
+        if (vpAiPanels != null && vpAiPanels.getAdapter() != null) {
+            vpAiPanels.getAdapter().notifyDataSetChanged();
         }
     }
 
@@ -270,7 +279,8 @@ public class WordLearningFragment extends Fragment {
         layoutAiDisabled = view.findViewById(R.id.layoutAiDisabled);
         btnGoToAiSettings = view.findViewById(R.id.btnGoToAiSettings);
 
-        // 绑定底部指示器视图
+        // 绑定圆点指示器的父容器及子视图
+        layoutAiIndicators = view.findViewById(R.id.layoutAiIndicators);
         View dotPanel0 = view.findViewById(R.id.dotPanel0);
         View dotPanel1 = view.findViewById(R.id.dotPanel1);
         View dotPanel2 = view.findViewById(R.id.dotPanel2);
@@ -292,10 +302,6 @@ public class WordLearningFragment extends Fragment {
         }
     }
 
-    /**
-     * 更新底部圆点指示器状态
-     * @param position 当前选中的页面索引
-     */
     private void updateIndicators(int position) {
         if (indicatorDots == null) return;
         for (int i = 0; i < indicatorDots.length; i++) {
@@ -476,7 +482,9 @@ public class WordLearningFragment extends Fragment {
 
     private void handlePermissionDenied() {
         showSafeToast("需授予相机权限以启用 AI 监测功能");
-        isAIFeatureEnabled = false;
+        isAntiDozeOn = false;
+        isEmotionOn = false;
+        isAIFeatureEnabled = isAiSentenceOn; // 如果造句开着，总面板依然开启
         applyAiSettingsToUI();
     }
 
@@ -633,10 +641,13 @@ public class WordLearningFragment extends Fragment {
         if (cameraExecutor != null) cameraExecutor.shutdown();
     }
 
-    private void generateSentenceWithAI(String words) {
+    /**
+     * 将目标视图传入方法进行网络请求回调的精准操作，解耦全局变量依赖。
+     */
+    private void generateSentenceWithAI(String words, AppCompatButton btnAiGenerate, TextView tvAiSentenceResult) {
         if (btnAiGenerate != null) {
             btnAiGenerate.setEnabled(false);
-            btnAiGenerate.setText("生成中"); // 配合小尺寸按钮，文案精简
+            btnAiGenerate.setText("生成中");
         }
 
         AiNetworkHelper.generateSentenceWithAI(words, new AiNetworkHelper.GenerateSentenceCallback() {
@@ -661,7 +672,7 @@ public class WordLearningFragment extends Fragment {
                 showSafeToast("AI 造句请求异常，请检查网络或配置");
                 if (btnAiGenerate != null) {
                     btnAiGenerate.setEnabled(true);
-                    btnAiGenerate.setText("重试"); // 配合小尺寸按钮，异常状态短文本
+                    btnAiGenerate.setText("重试");
                 }
             }
         });
@@ -688,6 +699,11 @@ public class WordLearningFragment extends Fragment {
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             if (vpAiPanels != null && position == vpAiPanels.getCurrentItem()) {
                 attachPreviewViewToCurrentPage(position);
+            }
+
+            // 每次页面被绑定时，主动应用最新的造句开关状态
+            if (holder instanceof SentenceViewHolder) {
+                ((SentenceViewHolder) holder).bind(isAiSentenceOn);
             }
         }
 
@@ -721,23 +737,47 @@ public class WordLearningFragment extends Fragment {
     }
 
     private class SentenceViewHolder extends RecyclerView.ViewHolder {
+
+        private final TextView tvDisabled;
+        private final LinearLayout layoutContent;
+        private final EditText etInput;
+        private final AppCompatButton btnGenerate;
+        private final TextView tvResult;
+
         public SentenceViewHolder(@NonNull View itemView) {
             super(itemView);
-            etAiWordsInput = itemView.findViewById(R.id.etAiWordsInput);
-            btnAiGenerate = itemView.findViewById(R.id.btnAiGenerate);
-            tvAiSentenceResult = itemView.findViewById(R.id.tvAiSentenceResult);
+            tvDisabled = itemView.findViewById(R.id.tvAiSentenceDisabled);
+            layoutContent = itemView.findViewById(R.id.layoutAiSentenceContent);
+            etInput = itemView.findViewById(R.id.etAiWordsInput);
+            btnGenerate = itemView.findViewById(R.id.btnAiGenerate);
+            tvResult = itemView.findViewById(R.id.tvAiSentenceResult);
 
-            if (btnAiGenerate != null) {
-                btnAiGenerate.setOnClickListener(v -> {
-                    String inputWords = etAiWordsInput.getText().toString().trim();
+            if (btnGenerate != null) {
+                btnGenerate.setOnClickListener(v -> {
+                    String inputWords = etInput.getText().toString().trim();
                     if (inputWords.isEmpty()) {
                         showSafeToast("请输入需要造句的单词");
                         return;
                     }
-                    tvAiSentenceResult.setText("请求发送中...");
-                    tvAiSentenceResult.setTextColor(Color.parseColor("#888888"));
-                    generateSentenceWithAI(inputWords);
+                    tvResult.setText("请求发送中...");
+                    tvResult.setTextColor(Color.parseColor("#888888"));
+                    // 将自身持有的控件实例传递给外部的网络请求逻辑
+                    generateSentenceWithAI(inputWords, btnGenerate, tvResult);
                 });
+            }
+        }
+
+        /**
+         * 状态驱动的显式绑定方法
+         * @param isSentenceEnabled 数据库读取出的最新开启状态
+         */
+        public void bind(boolean isSentenceEnabled) {
+            if (isSentenceEnabled) {
+                if (tvDisabled != null) tvDisabled.setVisibility(View.GONE);
+                if (layoutContent != null) layoutContent.setVisibility(View.VISIBLE);
+            } else {
+                if (tvDisabled != null) tvDisabled.setVisibility(View.VISIBLE);
+                if (layoutContent != null) layoutContent.setVisibility(View.GONE);
             }
         }
     }

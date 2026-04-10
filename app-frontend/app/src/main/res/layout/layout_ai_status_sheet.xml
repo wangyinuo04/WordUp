@@ -33,6 +33,35 @@
         android:layout_marginTop="20dp" />
 
     <LinearLayout
+        android:id="@+id/layoutAiIndicators"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <View
+            android:id="@+id/dotPanel0"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_dot_active" />
+
+        <View
+            android:id="@+id/dotPanel1"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/bg_dot_inactive" />
+
+        <View
+            android:id="@+id/dotPanel2"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/bg_dot_inactive" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/layoutAiDisabled"
         android:layout_width="match_parent"
         android:layout_height="200dp"

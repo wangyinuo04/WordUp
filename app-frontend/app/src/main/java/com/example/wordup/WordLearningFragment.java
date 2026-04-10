@@ -14,9 +14,9 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -48,7 +48,7 @@ import java.util.concurrent.Executors;
 
 /**
  * 单词学习页面 Fragment。
- * 已完善：采用顶部悬浮横幅（Banner）替换原生 Toast 进行疲劳警告，包含 3 秒自动隐藏逻辑。
+ * 已完善：AI功能面板底部指示器（圆点）动态联动逻辑。
  */
 public class WordLearningFragment extends Fragment {
 
@@ -62,39 +62,38 @@ public class WordLearningFragment extends Fragment {
     private TextView tvChineseMeaning;
 
     private BottomSheetBehavior<LinearLayout> bottomSheetBehavior;
-
-    // 顶部悬浮提示横幅
     private TextView tvTopAlertBanner;
 
-    // AI 状态面板相关
     private LinearLayout layoutAiDisabled;
     private AppCompatButton btnGoToAiSettings;
     private ViewPager2 vpAiPanels;
     private PreviewView previewView;
 
-    // 缓存防瞌睡面板的视图引用
+    // AI面板底部圆点指示器数组
+    private View[] indicatorDots;
+
     private FrameLayout containerCameraFatigue;
     private TextView tvFatigueStatus;
     private TextView tvFatigueScore;
     private TextView tvFatigueHint;
 
-    // 缓存情绪识别面板的视图引用
     private FrameLayout containerCameraEmotion;
     private TextView tvEmotionState;
+
+    private EditText etAiWordsInput;
+    private AppCompatButton btnAiGenerate;
+    private TextView tvAiSentenceResult;
 
     private float startY;
     private int totalWords = 150;
     private boolean isReviewMode = false;
 
-    // AI 功能的独立开关状态
     private boolean isAIFeatureEnabled = false;
     private boolean isAntiDozeOn = false;
     private boolean isEmotionOn = false;
 
     private Toast mSingletonToast;
     private long lastClickTime = 0;
-
-    // 震动冷却时间记录
     private long lastVibrateTime = 0;
 
     private List<WordLearningVO> currentBatchList = new ArrayList<>();
@@ -109,7 +108,6 @@ public class WordLearningFragment extends Fragment {
     private FaceMeshAnalyzer aiAnalyzer;
     private ActivityResultLauncher<String> requestPermissionLauncher;
 
-    // 用于自动隐藏顶部横幅的 Runnable 任务
     private final Runnable hideAlertRunnable = () -> {
         if (tvTopAlertBanner != null) {
             tvTopAlertBanner.setVisibility(View.GONE);
@@ -272,6 +270,12 @@ public class WordLearningFragment extends Fragment {
         layoutAiDisabled = view.findViewById(R.id.layoutAiDisabled);
         btnGoToAiSettings = view.findViewById(R.id.btnGoToAiSettings);
 
+        // 绑定底部指示器视图
+        View dotPanel0 = view.findViewById(R.id.dotPanel0);
+        View dotPanel1 = view.findViewById(R.id.dotPanel1);
+        View dotPanel2 = view.findViewById(R.id.dotPanel2);
+        indicatorDots = new View[]{dotPanel0, dotPanel1, dotPanel2};
+
         previewView = new PreviewView(requireContext());
 
         if (vpAiPanels != null) {
@@ -282,8 +286,26 @@ public class WordLearningFragment extends Fragment {
                 public void onPageSelected(int position) {
                     super.onPageSelected(position);
                     attachPreviewViewToCurrentPage(position);
+                    updateIndicators(position);
                 }
             });
+        }
+    }
+
+    /**
+     * 更新底部圆点指示器状态
+     * @param position 当前选中的页面索引
+     */
+    private void updateIndicators(int position) {
+        if (indicatorDots == null) return;
+        for (int i = 0; i < indicatorDots.length; i++) {
+            if (indicatorDots[i] != null) {
+                if (i == position) {
+                    indicatorDots[i].setBackgroundResource(R.drawable.bg_dot_active);
+                } else {
+                    indicatorDots[i].setBackgroundResource(R.drawable.bg_dot_inactive);
+                }
+            }
         }
     }
 
@@ -394,16 +416,11 @@ public class WordLearningFragment extends Fragment {
         mSingletonToast.show();
     }
 
-    /**
-     * 显示顶部悬浮警告横幅，并设定 3 秒后自动隐藏。
-     */
     private void showTopAlert(String message) {
         if (tvTopAlertBanner != null) {
             tvTopAlertBanner.setText(message);
             tvTopAlertBanner.setVisibility(View.VISIBLE);
-            // 移除可能存在的旧的隐藏任务，防止横幅过早消失
             tvTopAlertBanner.removeCallbacks(hideAlertRunnable);
-            // 延时 3000 毫秒后执行隐藏任务
             tvTopAlertBanner.postDelayed(hideAlertRunnable, 3000);
         }
     }
@@ -498,14 +515,13 @@ public class WordLearningFragment extends Fragment {
     private void processAIResult(WordUpAIResult result) {
         if (!isAIFeatureEnabled || getView() == null) return;
 
-        // 当底层处于前 1.5 秒的基准获取期时，拦截数据分发实现静默校准，且不弹任何 UI
         if (result.isCalibrating) {
             return;
         }
 
         if (isAntiDozeOn && result.fatigueLevel == 1) {
-            showTopAlert("监测到极度疲劳，请注意休息！"); // 触发顶部悬浮横幅警告
-            triggerVibrationAlert(); // 触发震动提醒
+            showTopAlert("监测到极度疲劳，请注意休息！");
+            triggerVibrationAlert();
         }
 
         float drowsinessRatio = result.fatigueScore / 100f;
@@ -516,13 +532,10 @@ public class WordLearningFragment extends Fragment {
         updateAIStatus(drowsinessRatio, emotionRatio);
     }
 
-    /**
-     * 触发震动提醒，带有 3 秒的防高频卡死冷却限制。
-     */
     private void triggerVibrationAlert() {
         long currentTime = SystemClock.elapsedRealtime();
         if (currentTime - lastVibrateTime < 3000) {
-            return; // 处于冷却时间内，不重复触发
+            return;
         }
         lastVibrateTime = currentTime;
 
@@ -532,7 +545,7 @@ public class WordLearningFragment extends Fragment {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE));
             } else {
-                vibrator.vibrate(500); // 兼容旧版本
+                vibrator.vibrate(500);
             }
         }
     }
@@ -611,19 +624,47 @@ public class WordLearningFragment extends Fragment {
         if (getActivity() != null) getActivity().getSupportFragmentManager().popBackStack();
     }
 
-    private int dpToPx(int dp) {
-        float density = getResources().getDisplayMetrics().density;
-        return Math.round((float) dp * density);
-    }
-
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        // 销毁视图时清理回调，防止内存泄漏
         if (tvTopAlertBanner != null) {
             tvTopAlertBanner.removeCallbacks(hideAlertRunnable);
         }
         if (cameraExecutor != null) cameraExecutor.shutdown();
+    }
+
+    private void generateSentenceWithAI(String words) {
+        if (btnAiGenerate != null) {
+            btnAiGenerate.setEnabled(false);
+            btnAiGenerate.setText("生成中"); // 配合小尺寸按钮，文案精简
+        }
+
+        AiNetworkHelper.generateSentenceWithAI(words, new AiNetworkHelper.GenerateSentenceCallback() {
+            @Override
+            public void onSuccess(String sentence) {
+                if (tvAiSentenceResult != null) {
+                    tvAiSentenceResult.setTextColor(Color.parseColor("#333333"));
+                    tvAiSentenceResult.setText(sentence);
+                }
+                if (btnAiGenerate != null) {
+                    btnAiGenerate.setEnabled(true);
+                    btnAiGenerate.setText("AI造句");
+                }
+            }
+
+            @Override
+            public void onFailure(String errorMsg) {
+                if (tvAiSentenceResult != null) {
+                    tvAiSentenceResult.setTextColor(Color.parseColor("#FF5252"));
+                    tvAiSentenceResult.setText("生成失败：" + errorMsg);
+                }
+                showSafeToast("AI 造句请求异常，请检查网络或配置");
+                if (btnAiGenerate != null) {
+                    btnAiGenerate.setEnabled(true);
+                    btnAiGenerate.setText("重试"); // 配合小尺寸按钮，异常状态短文本
+                }
+            }
+        });
     }
 
     private class AiPagerAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
@@ -682,6 +723,22 @@ public class WordLearningFragment extends Fragment {
     private class SentenceViewHolder extends RecyclerView.ViewHolder {
         public SentenceViewHolder(@NonNull View itemView) {
             super(itemView);
+            etAiWordsInput = itemView.findViewById(R.id.etAiWordsInput);
+            btnAiGenerate = itemView.findViewById(R.id.btnAiGenerate);
+            tvAiSentenceResult = itemView.findViewById(R.id.tvAiSentenceResult);
+
+            if (btnAiGenerate != null) {
+                btnAiGenerate.setOnClickListener(v -> {
+                    String inputWords = etAiWordsInput.getText().toString().trim();
+                    if (inputWords.isEmpty()) {
+                        showSafeToast("请输入需要造句的单词");
+                        return;
+                    }
+                    tvAiSentenceResult.setText("请求发送中...");
+                    tvAiSentenceResult.setTextColor(Color.parseColor("#888888"));
+                    generateSentenceWithAI(inputWords);
+                });
+            }
         }
     }
 }

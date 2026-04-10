@@ -3,7 +3,7 @@ package com.example.wordup;
 public class NetworkConfig {
     /**
      * 10.0.2.2 是安卓模拟器访问电脑主机的标准地址。
-     * 如果连不上，请临时改为你电脑的真 IP (例如 "http://192.168.198.168:8080")。
+     * 如果连不上，请临时改为你电脑的真 IP (例如 "http://192.168.198.168:8080")。校园网10.100.84.126
      * 提交给队友前记得改回 10.0.2.2。
      */
     public static final String BASE_URL = "http://192.168.198.168:8080";

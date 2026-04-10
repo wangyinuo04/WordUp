@@ -186,7 +186,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="↑上滑设置AI功能的提示"
+                android:text="↑上滑设置AI功能"
                 android:textColor="#999999"
                 android:textSize="12sp" />
         </LinearLayout>

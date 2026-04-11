@@ -25,6 +25,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialog;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -46,10 +47,16 @@ public class HomeFragment extends Fragment {
     private long currentUserId;
 
     // ==========================================
-    // 新增：独立缓存当前用户的新词配额与旧词配额
+    // 独立缓存当前用户的新词配额、旧词配额以及总配额
     // ==========================================
     private int currentDailyNewTarget = 10;    // 默认兜底值
     private int currentDailyReviewTarget = 20; // 默认兜底值
+
+    // 新增：内存级总数状态缓存，用于阻断 View 重建时的 XML 默认值闪现
+    private int currentDailyTotalTarget = -1;
+
+    // 防连点与探针网络请求状态位
+    private boolean isCheckingJump = false;
 
     @Nullable
     @Override
@@ -126,6 +133,17 @@ public class HomeFragment extends Fragment {
         tvCurrentBook = view.findViewById(R.id.tvCurrentBook);
         tvTodayWords = view.findViewById(R.id.tvTodayWords);
 
+        // ========================================================================
+        // 核心修复：View 重建时立刻使用内存缓存值覆盖 XML 中的默认值 150
+        // ========================================================================
+        if (tvTodayWords != null) {
+            if (currentDailyTotalTarget != -1) {
+                tvTodayWords.setText(String.valueOf(currentDailyTotalTarget));
+            } else {
+                tvTodayWords.setText("--"); // 首次尚未加载完成时，使用破折号占位防止误导
+            }
+        }
+
         ivStatusAntiDoze = view.findViewById(R.id.ivStatusAntiDoze);
         tvStatusAntiDoze = view.findViewById(R.id.tvStatusAntiDoze);
 
@@ -153,11 +171,13 @@ public class HomeFragment extends Fragment {
         BookNetworkHelper.getCurrentBook(currentUserId, new BookNetworkHelper.GetCurrentBookCallback() {
             @Override
             public void onSuccess(String bookName) {
+                if (!isAdded()) return;
                 tvCurrentBook.setText("《" + bookName + "》");
             }
 
             @Override
             public void onFailure(String errorMsg) {
+                if (!isAdded()) return;
                 tvCurrentBook.setText("《暂无词书》");
             }
         });
@@ -170,6 +190,8 @@ public class HomeFragment extends Fragment {
         AiNetworkHelper.getAiSettings(currentUserId, new AiNetworkHelper.GetSettingsCallback() {
             @Override
             public void onSuccess(UserPlan plan) {
+                if (!isAdded()) return;
+
                 boolean antiDozeOn = plan.getAntiSleepOn() != null && plan.getAntiSleepOn() == 1;
                 boolean aiSentenceOn = plan.getAiSentenceOn() != null && plan.getAiSentenceOn() == 1;
                 boolean emotionOn = plan.getEmotionRecogOn() != null && plan.getEmotionRecogOn() == 1;
@@ -178,9 +200,6 @@ public class HomeFragment extends Fragment {
                 renderSingleStatus(ivStatusAISentence, tvStatusAISentence, aiSentenceOn, "AI造句");
                 renderSingleStatus(ivStatusEmotion, tvStatusEmotion, emotionOn, "情绪识别");
 
-                // ==========================================
-                // 核心：从后端拉取并缓存拆分后的独立配额
-                // ==========================================
                 if (plan.getDailyNewTarget() != null) {
                     currentDailyNewTarget = plan.getDailyNewTarget();
                 }
@@ -188,9 +207,12 @@ public class HomeFragment extends Fragment {
                     currentDailyReviewTarget = plan.getDailyReviewTarget();
                 }
 
-                // 更新 UI 上的今日待背总数
-                if (tvTodayWords != null && plan.getDailyTarget() != null) {
-                    tvTodayWords.setText(String.valueOf(plan.getDailyTarget()));
+                if (plan.getDailyTarget() != null) {
+                    // 同步更新缓存状态，并渲染 UI
+                    currentDailyTotalTarget = plan.getDailyTarget();
+                    if (tvTodayWords != null) {
+                        tvTodayWords.setText(String.valueOf(currentDailyTotalTarget));
+                    }
                 }
             }
 
@@ -215,19 +237,46 @@ public class HomeFragment extends Fragment {
     }
 
     // ========================================================================
-    // 核心修改：动态分配路由跳转时的右上角目标数字
+    // API 探针校验，阻断空数据时的页面闪现 (已通过验证，不做随意修改)
     // ========================================================================
     private void handleLearningJump(boolean isReviewMode) {
-        // 根据不同模式传入专属的数量，实现右上角独立显示 (例如: /10 或 /20)
-        int targetWords = isReviewMode ? currentDailyReviewTarget : currentDailyNewTarget;
+        // 防止用户狂点按钮导致发起多次请求或发生多次 Fragment 叠加
+        if (isCheckingJump) return;
+        isCheckingJump = true;
 
-        WordLearningFragment fragment = WordLearningFragment.newInstance(isReviewMode, targetWords);
-        if (getActivity() != null) {
-            getActivity().getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, fragment) // 请确保 R.id.fragment_container 是您的实际容器ID
-                    .addToBackStack(null)
-                    .commit();
-        }
+        int targetWords = isReviewMode ? currentDailyReviewTarget : currentDailyNewTarget;
+        long currentBookId = requireActivity().getSharedPreferences("MyAppConfig", Context.MODE_PRIVATE).getLong("current_book_id", 1L);
+
+        // 前置探针请求：仅拉取 size 为 1 的数据，轻量级探测后端是否还有待背单词
+        WordLearningNetworkHelper.getWordBatch(currentUserId, currentBookId, 1, isReviewMode, new WordLearningNetworkHelper.GetBatchCallback() {
+            @Override
+            public void onSuccess(List<WordLearningVO> wordList, int offset) {
+                isCheckingJump = false;
+                if (!isAdded()) return;
+
+                if (wordList == null || wordList.isEmpty()) {
+                    // 探针发现已无数据，直接在主页拦截并弹出提示，从根源切断页面闪现
+                    String finishMsg = isReviewMode ? "🎉 恭喜！今日复习任务已全部完成！" : "🎉 恭喜！今日新词学习已达标！";
+                    Toast.makeText(requireContext(), finishMsg, Toast.LENGTH_SHORT).show();
+                } else {
+                    // 探针确认有数据，正常放行 UI 跳转
+                    WordLearningFragment fragment = WordLearningFragment.newInstance(isReviewMode, targetWords);
+                    if (getActivity() != null) {
+                        getActivity().getSupportFragmentManager().beginTransaction()
+                                .replace(R.id.fragment_container, fragment) // 请确保 R.id.fragment_container 是实际容器ID
+                                .addToBackStack(null)
+                                .commit();
+                    }
+                }
+            }
+
+            @Override
+            public void onFailure(String errorMsg) {
+                isCheckingJump = false;
+                if (!isAdded()) return;
+                Toast.makeText(requireContext(), "数据校验失败: " + errorMsg, Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     // ========================================================================
@@ -270,34 +319,32 @@ public class HomeFragment extends Fragment {
                 return;
             }
 
-            // 禁用按钮防连点
             btnConfirm.setEnabled(false);
 
             int newCount = Integer.parseInt(newWordsStr);
             int reviewCount = newCount * currentRatio[0];
             int totalTarget = newCount + reviewCount;
 
-            // 核心修改：提交完整的拆分配额参数到后端
             PlanNetworkHelper.updateDailyTarget(currentUserId, totalTarget, newCount, reviewCount, new PlanNetworkHelper.UpdatePlanCallback() {
                 @Override
                 public void onSuccess() {
+                    if (!isAdded()) return;
                     Toast.makeText(getContext(), "计划已更新", Toast.LENGTH_SHORT).show();
 
-                    // ==========================================
-                    // 局部刷新：更新本地缓存变量，确保下次点击立刻生效
-                    // ==========================================
                     currentDailyNewTarget = newCount;
                     currentDailyReviewTarget = reviewCount;
 
-                    // 局部刷新 UI 数值
+                    // 同步更新缓存状态，并渲染 UI
+                    currentDailyTotalTarget = totalTarget;
                     if (tvTodayWords != null) {
-                        tvTodayWords.setText(String.valueOf(totalTarget));
+                        tvTodayWords.setText(String.valueOf(currentDailyTotalTarget));
                     }
                     bottomSheet.dismiss();
                 }
 
                 @Override
                 public void onFailure(String errorMsg) {
+                    if (!isAdded()) return;
                     Toast.makeText(getContext(), "修改失败: " + errorMsg, Toast.LENGTH_SHORT).show();
                     btnConfirm.setEnabled(true);
                 }

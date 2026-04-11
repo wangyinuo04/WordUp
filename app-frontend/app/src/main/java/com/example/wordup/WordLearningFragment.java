@@ -49,6 +49,7 @@ import java.util.concurrent.Executors;
 /**
  * 单词学习页面 Fragment。
  * 已完善：基于确切数据库难度映射(1难, 2中, 3易)的AI情绪实时调度单词难度策略。
+ * 修复版：注入全局异步生命周期安全校验防止闪退；并在视图初始化阶段抹除 XML 默认占位数据防止闪现。
  */
 public class WordLearningFragment extends Fragment {
 
@@ -210,6 +211,9 @@ public class WordLearningFragment extends Fragment {
         AiNetworkHelper.getAiSettings(CURRENT_USER_ID, new AiNetworkHelper.GetSettingsCallback() {
             @Override
             public void onSuccess(UserPlan plan) {
+                // 防止 Fragment 被退栈后触发渲染导致空指针闪退
+                if (!isAdded() || getActivity() == null) return;
+
                 isAntiDozeOn = (plan.getAntiSleepOn() != null && plan.getAntiSleepOn() == 1);
                 isEmotionOn = (plan.getEmotionRecogOn() != null && plan.getEmotionRecogOn() == 1);
                 isAiSentenceOn = (plan.getAiSentenceOn() != null && plan.getAiSentenceOn() == 1);
@@ -220,6 +224,7 @@ public class WordLearningFragment extends Fragment {
 
             @Override
             public void onFailure(String errorMsg) {
+                if (!isAdded() || getActivity() == null) return;
                 showSafeToast("获取 AI 设置失败: " + errorMsg);
             }
         });
@@ -286,6 +291,28 @@ public class WordLearningFragment extends Fragment {
 
         previewView = new PreviewView(requireContext());
 
+        // ========================================================================
+        // 核心修复：执行视觉静默。清空 XML 中写死的默认占位数据，防止网络请求期间的闪现
+        // ========================================================================
+        if (tvProgress != null) {
+            // 此时 totalWords 已经从 Argument 中获取到了真实的配额（如 80 或 160）
+            tvProgress.setText("-/" + totalWords);
+        }
+        if (tvWord != null) tvWord.setText("");
+        if (tvPhonetic != null) tvPhonetic.setText("");
+        if (tvDefinition != null) tvDefinition.setText("");
+        if (tvDifficulty != null) {
+            tvDifficulty.setText("");
+            tvDifficulty.setBackgroundResource(0); // 清除死数据的默认背景框
+        }
+        if (layoutDefinitionContainer != null) {
+            layoutDefinitionContainer.setVisibility(View.INVISIBLE);
+        }
+        if (tvHintClick != null) {
+            tvHintClick.setVisibility(View.INVISIBLE);
+        }
+        // ========================================================================
+
         if (vpAiPanels != null) {
             vpAiPanels.setAdapter(new AiPagerAdapter());
             vpAiPanels.setOffscreenPageLimit(3);
@@ -320,6 +347,9 @@ public class WordLearningFragment extends Fragment {
         WordLearningNetworkHelper.getWordBatch(CURRENT_USER_ID, CURRENT_BOOK_ID, 50, isReviewMode, new WordLearningNetworkHelper.GetBatchCallback() {
             @Override
             public void onSuccess(List<WordLearningVO> wordList, int offset) {
+                // 如果在网络请求期间用户已退栈或者页面触发销毁操作，则拦截处理逻辑
+                if (!isAdded() || getActivity() == null) return;
+
                 isFetchingBatch = false;
 
                 if (wordList == null || wordList.isEmpty()) {
@@ -337,19 +367,14 @@ public class WordLearningFragment extends Fragment {
 
             @Override
             public void onFailure(String errorMsg) {
+                if (!isAdded() || getActivity() == null) return;
                 isFetchingBatch = false;
                 showSafeToast("获取单词批次失败: " + errorMsg);
             }
         });
     }
 
-    /**
-     * 基于当前 AI 情绪状态，对局部剩余队列进行前置干预
-     * 遵循策略级别：情绪干预(最高) > 临时旧词(次高) > 默认次序(最低)
-     * 数据库难度定义说明：1:难, 2:中等, 3:易
-     */
     private void applyEmotionScheduling() {
-        // 条件校验：确保情绪识别已开启，且当前批次仍有待推送的后续单词
         if (!isEmotionOn || currentBatchList == null || currentBatchIndex + 1 >= currentBatchList.size()) {
             return;
         }
@@ -357,7 +382,6 @@ public class WordLearningFragment extends Fragment {
         int targetIndex = -1;
 
         if ("Positive".equals(currentEmotionState)) {
-            // 积极情绪：向后探查首个难度为 1（困难）的单词
             for (int i = currentBatchIndex + 1; i < currentBatchList.size(); i++) {
                 Integer diff = currentBatchList.get(i).getDifficulty();
                 if (diff != null && diff == 1) {
@@ -366,7 +390,6 @@ public class WordLearningFragment extends Fragment {
                 }
             }
         } else if ("Negative".equals(currentEmotionState)) {
-            // 消极情绪：向后探查首个难度为 3（简单）的单词
             for (int i = currentBatchIndex + 1; i < currentBatchList.size(); i++) {
                 Integer diff = currentBatchList.get(i).getDifficulty();
                 if (diff != null && diff == 3) {
@@ -376,7 +399,6 @@ public class WordLearningFragment extends Fragment {
             }
         }
 
-        // 命中重排：若探查到目标单词，且当前尚未排在第一顺位，则执行提取并前置插队
         if (targetIndex != -1 && targetIndex != currentBatchIndex + 1) {
             WordLearningVO targetWord = currentBatchList.remove(targetIndex);
             currentBatchList.add(currentBatchIndex + 1, targetWord);
@@ -401,7 +423,6 @@ public class WordLearningFragment extends Fragment {
             public void onFailure(String errorMsg) {}
         });
 
-        // 核心集成：在执行下一步流转前，基于当前最新情绪瞬时拦截并重排后续队列
         applyEmotionScheduling();
 
         nextWord();
@@ -457,7 +478,7 @@ public class WordLearningFragment extends Fragment {
     }
 
     private void showSafeToast(String message) {
-        if (getContext() == null) return;
+        if (getContext() == null || getActivity() == null) return;
         if (mSingletonToast != null) mSingletonToast.cancel();
         mSingletonToast = Toast.makeText(getContext(), message, Toast.LENGTH_SHORT);
         mSingletonToast.show();
@@ -495,7 +516,6 @@ public class WordLearningFragment extends Fragment {
         }
         if (tvDefinition != null) tvDefinition.setText(wordVO.getTranslation());
 
-        // 依据数据库定义规则渲染：1为难，2为中等，3为易
         if (tvDifficulty != null) {
             Integer difficultyValue = wordVO.getDifficulty();
             if (difficultyValue != null && difficultyValue == 1) {
@@ -534,7 +554,9 @@ public class WordLearningFragment extends Fragment {
         if (cameraExecutor != null) return;
         cameraExecutor = Executors.newSingleThreadExecutor();
         aiAnalyzer = new FaceMeshAnalyzer(requireContext(), result -> {
-            if (getActivity() != null) getActivity().runOnUiThread(() -> processAIResult(result));
+            if (getActivity() != null && isAdded()) {
+                getActivity().runOnUiThread(() -> processAIResult(result));
+            }
         });
 
         aiAnalyzer.setFatigueDetectionEnabled(isAntiDozeOn);
@@ -542,6 +564,9 @@ public class WordLearningFragment extends Fragment {
 
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
         cameraProviderFuture.addListener(() -> {
+            // 防止 Fragment 视图被系统销毁时调用 getViewLifecycleOwner() 导致生命周期异常闪退
+            if (!isAdded() || getView() == null) return;
+
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
 
@@ -563,7 +588,7 @@ public class WordLearningFragment extends Fragment {
     }
 
     private void processAIResult(WordUpAIResult result) {
-        if (!isAIFeatureEnabled || getView() == null) return;
+        if (!isAIFeatureEnabled || getView() == null || !isAdded()) return;
 
         if (result.isCalibrating) {
             return;
@@ -577,7 +602,6 @@ public class WordLearningFragment extends Fragment {
         float drowsinessRatio = result.fatigueScore / 100f;
         float emotionRatio;
 
-        // 解析并在类成员中持久化最新瞬时情绪，供词汇调度算法即时取用
         if ("Positive".equals(result.emotion)) {
             emotionRatio = 1.0f;
             currentEmotionState = "Positive";
@@ -620,7 +644,7 @@ public class WordLearningFragment extends Fragment {
     }
 
     public void updateAIStatus(float drowsiness, float emotion) {
-        if (!isAIFeatureEnabled || getView() == null) return;
+        if (!isAIFeatureEnabled || getView() == null || !isAdded()) return;
 
         if (tvFatigueScore != null && tvFatigueStatus != null && tvFatigueHint != null) {
             if (!isAntiDozeOn) {
@@ -668,7 +692,7 @@ public class WordLearningFragment extends Fragment {
     }
 
     private void attachPreviewViewToCurrentPage(int position) {
-        if (previewView == null) return;
+        if (previewView == null || getView() == null) return;
         ViewGroup parent = (ViewGroup) previewView.getParent();
         if (parent != null) {
             parent.removeView(previewView);
@@ -681,7 +705,9 @@ public class WordLearningFragment extends Fragment {
     }
 
     private void goBack() {
-        if (getActivity() != null) getActivity().getSupportFragmentManager().popBackStack();
+        if (getActivity() != null && isAdded()) {
+            getActivity().getSupportFragmentManager().popBackStack();
+        }
     }
 
     @Override
@@ -702,6 +728,7 @@ public class WordLearningFragment extends Fragment {
         AiNetworkHelper.generateSentenceWithAI(words, new AiNetworkHelper.GenerateSentenceCallback() {
             @Override
             public void onSuccess(String sentence) {
+                if (!isAdded() || getActivity() == null) return;
                 if (tvAiSentenceResult != null) {
                     tvAiSentenceResult.setTextColor(Color.parseColor("#333333"));
                     tvAiSentenceResult.setText(sentence);
@@ -714,6 +741,7 @@ public class WordLearningFragment extends Fragment {
 
             @Override
             public void onFailure(String errorMsg) {
+                if (!isAdded() || getActivity() == null) return;
                 if (tvAiSentenceResult != null) {
                     tvAiSentenceResult.setTextColor(Color.parseColor("#FF5252"));
                     tvAiSentenceResult.setText("生成失败：" + errorMsg);

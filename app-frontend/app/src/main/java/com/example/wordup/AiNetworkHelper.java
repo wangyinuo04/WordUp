@@ -86,6 +86,14 @@ public class AiNetworkHelper {
                             plan.setEmotionRecogOn(data.optInt("emotionRecogOn"));
                             plan.setDailyTarget(data.optInt("dailyTarget", 150));
 
+                            // 解析新增的每日新词与复习配额字段，并进行空值安全校验
+                            if (!data.isNull("dailyNewTarget")) {
+                                plan.setDailyNewTarget(data.optInt("dailyNewTarget"));
+                            }
+                            if (!data.isNull("dailyReviewTarget")) {
+                                plan.setDailyReviewTarget(data.optInt("dailyReviewTarget"));
+                            }
+
                             mainHandler.post(() -> callback.onSuccess(plan));
                             return;
                         }

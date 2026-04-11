@@ -24,6 +24,9 @@ public class NetworkConfig {
     // 学习计划相关接口
     public static final String UPDATE_DAILY_TARGET_URL = BASE_URL + "/api/plan/daily-target/update";
 
+    // 新增：获取词书学习进度接口
+    public static final String GET_STUDY_PROGRESS_URL = BASE_URL + "/api/plan/progress";
+
     // ==========================================
     // 新增：背单词核心调度算法接口
     // ==========================================

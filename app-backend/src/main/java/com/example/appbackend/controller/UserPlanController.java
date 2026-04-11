@@ -3,6 +3,7 @@ package com.example.appbackend.controller;
 import com.example.appbackend.Result;
 import com.example.appbackend.entity.UserPlan;
 import com.example.appbackend.service.UserPlanService;
+import com.example.appbackend.vo.StudyProgressVO;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -31,29 +32,23 @@ public class UserPlanController {
 
     @PostMapping("/ai-settings/update")
     public Result<Void> updateAiSettings(@RequestBody UserPlan userPlan) {
-        System.out.println("当前请求接收到的 userId 为: " + userPlan.getUserId());
         if (userPlan.getUserId() == null) {
             return Result.error(400, "请求参数异常：用户ID不能为空");
         }
         boolean isSuccess = userPlanService.updateAiSettings(userPlan);
         if (isSuccess) {
-            return Result.success("设置更新成功", null);
+            return Result.success("AI设置更新成功", null);
         }
-        return Result.error(500, "设置更新失败，请重试");
+        return Result.error(500, "AI设置更新失败");
     }
 
-    /**
-     * 更新用户当前正在学习的词书
-     */
     @PostMapping("/book/update")
-    public Result<Void> updateUserBook(@RequestBody Map<String, Long> params) {
-        System.out.println("当前请求接收到的 userId 为: " + params.get("userId"));
-        Long userId = params.get("userId");
-        Long bookId = params.get("bookId");
-
-        if (userId == null || bookId == null) {
-            return Result.error(400, "用户ID与词书ID不能为空");
+    public Result<Void> updateBookId(@RequestBody Map<String, Object> params) {
+        if (params.get("userId") == null || params.get("bookId") == null) {
+            return Result.error(400, "参数异常：用户ID与词书ID不能为空");
         }
+        Long userId = Long.valueOf(params.get("userId").toString());
+        Long bookId = Long.valueOf(params.get("bookId").toString());
 
         boolean isSuccess = userPlanService.updateBookId(userId, bookId);
         if (isSuccess) {
@@ -62,32 +57,36 @@ public class UserPlanController {
         return Result.error(500, "词书切换失败");
     }
 
-    /**
-     * 更新用户的每日学习目标总数
-     */
     @PostMapping("/daily-target/update")
     public Result<Void> updateDailyTarget(@RequestBody Map<String, Object> params) {
-        // 1. 拦截参数缺失
         if (params.get("userId") == null || params.get("dailyTarget") == null ||
                 params.get("dailyNewTarget") == null || params.get("dailyReviewTarget") == null) {
             return Result.error(400, "参数不完整：缺少配额字段");
         }
 
         try {
-            // 2. 安全解析从前端传来的 JSON 字段
             Long userId = Long.valueOf(params.get("userId").toString());
             Integer dailyTarget = Integer.valueOf(params.get("dailyTarget").toString());
             Integer dailyNewTarget = Integer.valueOf(params.get("dailyNewTarget").toString());
             Integer dailyReviewTarget = Integer.valueOf(params.get("dailyReviewTarget").toString());
 
-            // 3. 调用 Mapper 或 Service 执行数据库更新
-            // 注意：如果您有 UserPlanService 请调用 service，如果没有请直接调用 userPlanMapper
             userPlanService.updateDailyTarget(userId, dailyTarget, dailyNewTarget, dailyReviewTarget);
-
-            return Result.success("计划更新成功", null);
+            return Result.success("每日目标更新成功", null);
         } catch (Exception e) {
-            e.printStackTrace();
-            return Result.error(500, "修改计划失败，请检查数据格式");
+            return Result.error(500, "每日目标更新失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * 获取特定用户的真实词书学习进度
+     * 【重构】参数精简，不再需要前端传递 bookId
+     */
+    @GetMapping("/progress")
+    public Result<StudyProgressVO> getStudyProgress(@RequestParam("userId") Long userId) {
+        if (userId == null) {
+            return Result.error(400, "参数异常：用户ID不能为空");
+        }
+        StudyProgressVO progressVO = userPlanService.getStudyProgress(userId);
+        return Result.success(progressVO);
     }
 }

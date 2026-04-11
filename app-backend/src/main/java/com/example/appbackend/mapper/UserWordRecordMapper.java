@@ -88,5 +88,15 @@ public interface UserWordRecordMapper extends BaseMapper<UserWordRecord> {
     @Select("SELECT COUNT(*) FROM user_word_record WHERE user_id = #{userId} AND DATE(updated_at) = CURDATE() AND DATE(created_at) < CURDATE()")
     int countTodayReviewedOldWords(@Param("userId") Long userId);
 
-}
+    /**
+     * 学习进度核算：统计某一用户在特定词书下已存在记录的单词总数
+     * 逻辑：联查 word 表过滤 book_id，精准匹配 user_id 保障数据隔离
+     */
+    @Select("SELECT COUNT(uwr.id) " +
+            "FROM user_word_record uwr " +
+            "JOIN word w ON uwr.word_id = w.id " +
+            "WHERE uwr.user_id = #{userId} " +
+            "  AND w.book_id = #{bookId}")
+    int countLearnedWordsByBook(@Param("userId") Long userId, @Param("bookId") Long bookId);
 
+}

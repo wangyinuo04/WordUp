@@ -12,6 +12,7 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,6 +44,10 @@ public class HomeFragment extends Fragment {
     private ImageView ivStatusAntiDoze, ivStatusAISentence, ivStatusEmotion;
     private TextView tvStatusAntiDoze, tvStatusAISentence, tvStatusEmotion;
 
+    // 进度显示相关的 UI 组件
+    private TextView tvProgressText;
+    private ProgressBar progressBar;
+
     // 动态获取当前登录用户的 ID
     private long currentUserId;
 
@@ -52,8 +57,10 @@ public class HomeFragment extends Fragment {
     private int currentDailyNewTarget = 10;    // 默认兜底值
     private int currentDailyReviewTarget = 20; // 默认兜底值
 
-    // 新增：内存级总数状态缓存，用于阻断 View 重建时的 XML 默认值闪现
+    // 内存级状态缓存，用于阻断 View 重建时的 XML 默认值闪现
     private int currentDailyTotalTarget = -1;
+    // 进度条防闪烁内存缓存
+    private double currentProgressPercentage = -1.0;
 
     // 防连点与探针网络请求状态位
     private boolean isCheckingJump = false;
@@ -119,6 +126,7 @@ public class HomeFragment extends Fragment {
         if (currentUserId != -1L) {
             refreshAiSettingsStatus(); // 该接口同时负责拉取并渲染 dailyTarget 和拆分后的配额
             refreshCurrentBookName();
+            refreshStudyProgress();    // 拉取并计算当前词书学习进度
         }
         if (tvDate != null) {
             updateDateText();
@@ -132,15 +140,26 @@ public class HomeFragment extends Fragment {
         tvDate = view.findViewById(R.id.tvDate);
         tvCurrentBook = view.findViewById(R.id.tvCurrentBook);
         tvTodayWords = view.findViewById(R.id.tvTodayWords);
+        tvProgressText = view.findViewById(R.id.tvProgressText);
+        progressBar = view.findViewById(R.id.progressBar);
 
-        // ========================================================================
         // 核心修复：View 重建时立刻使用内存缓存值覆盖 XML 中的默认值 150
-        // ========================================================================
         if (tvTodayWords != null) {
             if (currentDailyTotalTarget != -1) {
                 tvTodayWords.setText(String.valueOf(currentDailyTotalTarget));
             } else {
                 tvTodayWords.setText("--"); // 首次尚未加载完成时，使用破折号占位防止误导
+            }
+        }
+
+        // 进度条防闪烁处理：阻断 XML 中默认的 25% 死数据闪现
+        if (tvProgressText != null && progressBar != null) {
+            if (currentProgressPercentage != -1.0) {
+                tvProgressText.setText("当前进度 " + currentProgressPercentage + "%");
+                progressBar.setProgress((int) currentProgressPercentage);
+            } else {
+                tvProgressText.setText("当前进度 --%");
+                progressBar.setProgress(0);
             }
         }
 
@@ -179,6 +198,37 @@ public class HomeFragment extends Fragment {
             public void onFailure(String errorMsg) {
                 if (!isAdded()) return;
                 tvCurrentBook.setText("《暂无词书》");
+            }
+        });
+    }
+
+    /**
+     * 【重构】请求后端拉取并渲染词书学习进度
+     * 取消对本地缓存 bookId 的读取，交由后端进行统一溯源核算
+     */
+    private void refreshStudyProgress() {
+        PlanNetworkHelper.getStudyProgress(currentUserId, new PlanNetworkHelper.FetchProgressCallback() {
+            @Override
+            public void onSuccess(int learnedCount, int totalCount, double progressPercentage) {
+                if (!isAdded()) return;
+
+                // 更新内存缓存并渲染视图
+                currentProgressPercentage = progressPercentage;
+                if (tvProgressText != null && progressBar != null) {
+                    tvProgressText.setText("当前进度 " + progressPercentage + "%");
+                    progressBar.setProgress((int) progressPercentage);
+                }
+            }
+
+            @Override
+            public void onFailure(String errorMsg) {
+                if (!isAdded()) return;
+
+                // 请求失败时，若缓存仍为空，进行归零处理
+                if (tvProgressText != null && progressBar != null && currentProgressPercentage == -1.0) {
+                    tvProgressText.setText("当前进度 0%");
+                    progressBar.setProgress(0);
+                }
             }
         });
     }

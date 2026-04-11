@@ -48,7 +48,7 @@ import java.util.concurrent.Executors;
 
 /**
  * 单词学习页面 Fragment。
- * 已完善：AI功能面板底部指示器联动及显隐控制逻辑，及状态驱动的AI造句面板真实状态控制。
+ * 已完善：基于确切数据库难度映射(1难, 2中, 3易)的AI情绪实时调度单词难度策略。
  */
 public class WordLearningFragment extends Fragment {
 
@@ -101,6 +101,9 @@ public class WordLearningFragment extends Fragment {
 
     private long CURRENT_USER_ID;
     private long CURRENT_BOOK_ID;
+
+    // 全局记录当前实时情绪状态
+    private String currentEmotionState = "Neutral";
 
     private ExecutorService cameraExecutor;
     private FaceMeshAnalyzer aiAnalyzer;
@@ -211,7 +214,6 @@ public class WordLearningFragment extends Fragment {
                 isEmotionOn = (plan.getEmotionRecogOn() != null && plan.getEmotionRecogOn() == 1);
                 isAiSentenceOn = (plan.getAiSentenceOn() != null && plan.getAiSentenceOn() == 1);
 
-                // 只要有任意一项AI功能开启，即视为AI总功能面板开启
                 isAIFeatureEnabled = isAntiDozeOn || isEmotionOn || isAiSentenceOn;
                 applyAiSettingsToUI();
             }
@@ -227,7 +229,6 @@ public class WordLearningFragment extends Fragment {
         if (!isAIFeatureEnabled) {
             if (layoutAiDisabled != null) layoutAiDisabled.setVisibility(View.VISIBLE);
             if (vpAiPanels != null) vpAiPanels.setVisibility(View.GONE);
-            // 同步隐藏圆点指示器父容器
             if (layoutAiIndicators != null) layoutAiIndicators.setVisibility(View.GONE);
 
             if (aiAnalyzer != null) {
@@ -237,7 +238,6 @@ public class WordLearningFragment extends Fragment {
         } else {
             if (layoutAiDisabled != null) layoutAiDisabled.setVisibility(View.GONE);
             if (vpAiPanels != null) vpAiPanels.setVisibility(View.VISIBLE);
-            // 同步显示圆点指示器父容器
             if (layoutAiIndicators != null) layoutAiIndicators.setVisibility(View.VISIBLE);
 
             if (aiAnalyzer != null) {
@@ -250,7 +250,6 @@ public class WordLearningFragment extends Fragment {
             updateAIStatus(1.0f, 0.5f);
         }
 
-        // 通知 Adapter 刷新数据，确保造句面板在划到时能绑定到最新状态
         if (vpAiPanels != null && vpAiPanels.getAdapter() != null) {
             vpAiPanels.getAdapter().notifyDataSetChanged();
         }
@@ -279,7 +278,6 @@ public class WordLearningFragment extends Fragment {
         layoutAiDisabled = view.findViewById(R.id.layoutAiDisabled);
         btnGoToAiSettings = view.findViewById(R.id.btnGoToAiSettings);
 
-        // 绑定圆点指示器的父容器及子视图
         layoutAiIndicators = view.findViewById(R.id.layoutAiIndicators);
         View dotPanel0 = view.findViewById(R.id.dotPanel0);
         View dotPanel1 = view.findViewById(R.id.dotPanel1);
@@ -319,7 +317,7 @@ public class WordLearningFragment extends Fragment {
         if (isFetchingBatch) return;
         isFetchingBatch = true;
 
-        WordLearningNetworkHelper.getWordBatch(CURRENT_USER_ID, CURRENT_BOOK_ID, 10, isReviewMode, new WordLearningNetworkHelper.GetBatchCallback() {
+        WordLearningNetworkHelper.getWordBatch(CURRENT_USER_ID, CURRENT_BOOK_ID, 50, isReviewMode, new WordLearningNetworkHelper.GetBatchCallback() {
             @Override
             public void onSuccess(List<WordLearningVO> wordList, int offset) {
                 isFetchingBatch = false;
@@ -345,6 +343,46 @@ public class WordLearningFragment extends Fragment {
         });
     }
 
+    /**
+     * 基于当前 AI 情绪状态，对局部剩余队列进行前置干预
+     * 遵循策略级别：情绪干预(最高) > 临时旧词(次高) > 默认次序(最低)
+     * 数据库难度定义说明：1:难, 2:中等, 3:易
+     */
+    private void applyEmotionScheduling() {
+        // 条件校验：确保情绪识别已开启，且当前批次仍有待推送的后续单词
+        if (!isEmotionOn || currentBatchList == null || currentBatchIndex + 1 >= currentBatchList.size()) {
+            return;
+        }
+
+        int targetIndex = -1;
+
+        if ("Positive".equals(currentEmotionState)) {
+            // 积极情绪：向后探查首个难度为 1（困难）的单词
+            for (int i = currentBatchIndex + 1; i < currentBatchList.size(); i++) {
+                Integer diff = currentBatchList.get(i).getDifficulty();
+                if (diff != null && diff == 1) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+        } else if ("Negative".equals(currentEmotionState)) {
+            // 消极情绪：向后探查首个难度为 3（简单）的单词
+            for (int i = currentBatchIndex + 1; i < currentBatchList.size(); i++) {
+                Integer diff = currentBatchList.get(i).getDifficulty();
+                if (diff != null && diff == 3) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // 命中重排：若探查到目标单词，且当前尚未排在第一顺位，则执行提取并前置插队
+        if (targetIndex != -1 && targetIndex != currentBatchIndex + 1) {
+            WordLearningVO targetWord = currentBatchList.remove(targetIndex);
+            currentBatchList.add(currentBatchIndex + 1, targetWord);
+        }
+    }
+
     private void submitActionAndNext(boolean isKnown) {
         if (currentBatchList == null || currentBatchList.isEmpty() || currentBatchIndex >= currentBatchList.size()) return;
 
@@ -362,6 +400,9 @@ public class WordLearningFragment extends Fragment {
             @Override
             public void onFailure(String errorMsg) {}
         });
+
+        // 核心集成：在执行下一步流转前，基于当前最新情绪瞬时拦截并重排后续队列
+        applyEmotionScheduling();
 
         nextWord();
     }
@@ -454,9 +495,10 @@ public class WordLearningFragment extends Fragment {
         }
         if (tvDefinition != null) tvDefinition.setText(wordVO.getTranslation());
 
+        // 依据数据库定义规则渲染：1为难，2为中等，3为易
         if (tvDifficulty != null) {
             Integer difficultyValue = wordVO.getDifficulty();
-            if (difficultyValue != null && difficultyValue >= 3) {
+            if (difficultyValue != null && difficultyValue == 1) {
                 tvDifficulty.setText("难");
                 tvDifficulty.setTextColor(Color.parseColor("#FF5252"));
                 tvDifficulty.setBackgroundResource(R.drawable.bg_difficulty_tag_hard);
@@ -484,7 +526,7 @@ public class WordLearningFragment extends Fragment {
         showSafeToast("需授予相机权限以启用 AI 监测功能");
         isAntiDozeOn = false;
         isEmotionOn = false;
-        isAIFeatureEnabled = isAiSentenceOn; // 如果造句开着，总面板依然开启
+        isAIFeatureEnabled = isAiSentenceOn;
         applyAiSettingsToUI();
     }
 
@@ -533,9 +575,19 @@ public class WordLearningFragment extends Fragment {
         }
 
         float drowsinessRatio = result.fatigueScore / 100f;
-        float emotionRatio = 0.5f;
-        if ("Positive".equals(result.emotion)) emotionRatio = 1.0f;
-        else if ("Negative".equals(result.emotion)) emotionRatio = 0.0f;
+        float emotionRatio;
+
+        // 解析并在类成员中持久化最新瞬时情绪，供词汇调度算法即时取用
+        if ("Positive".equals(result.emotion)) {
+            emotionRatio = 1.0f;
+            currentEmotionState = "Positive";
+        } else if ("Negative".equals(result.emotion)) {
+            emotionRatio = 0.0f;
+            currentEmotionState = "Negative";
+        } else {
+            emotionRatio = 0.5f;
+            currentEmotionState = "Neutral";
+        }
 
         updateAIStatus(drowsinessRatio, emotionRatio);
     }
@@ -641,9 +693,6 @@ public class WordLearningFragment extends Fragment {
         if (cameraExecutor != null) cameraExecutor.shutdown();
     }
 
-    /**
-     * 将目标视图传入方法进行网络请求回调的精准操作，解耦全局变量依赖。
-     */
     private void generateSentenceWithAI(String words, AppCompatButton btnAiGenerate, TextView tvAiSentenceResult) {
         if (btnAiGenerate != null) {
             btnAiGenerate.setEnabled(false);
@@ -701,7 +750,6 @@ public class WordLearningFragment extends Fragment {
                 attachPreviewViewToCurrentPage(position);
             }
 
-            // 每次页面被绑定时，主动应用最新的造句开关状态
             if (holder instanceof SentenceViewHolder) {
                 ((SentenceViewHolder) holder).bind(isAiSentenceOn);
             }
@@ -761,16 +809,11 @@ public class WordLearningFragment extends Fragment {
                     }
                     tvResult.setText("请求发送中...");
                     tvResult.setTextColor(Color.parseColor("#888888"));
-                    // 将自身持有的控件实例传递给外部的网络请求逻辑
                     generateSentenceWithAI(inputWords, btnGenerate, tvResult);
                 });
             }
         }
 
-        /**
-         * 状态驱动的显式绑定方法
-         * @param isSentenceEnabled 数据库读取出的最新开启状态
-         */
         public void bind(boolean isSentenceEnabled) {
             if (isSentenceEnabled) {
                 if (tvDisabled != null) tvDisabled.setVisibility(View.GONE);

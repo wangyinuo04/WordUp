@@ -54,6 +54,12 @@ public class AiNetworkHelper {
         void onFailure(String errorMsg);
     }
 
+    // 新增：AI数据上报回调
+    public interface UpdateStatsCallback {
+        void onSuccess();
+        void onFailure(String errorMsg);
+    }
+
     public static void getAiSettings(Long userId, GetSettingsCallback callback) {
         executor.execute(() -> {
             HttpURLConnection connection = null;
@@ -244,6 +250,47 @@ public class AiNetworkHelper {
                 if (connection != null) {
                     connection.disconnect();
                 }
+            }
+        });
+    }
+
+    /**
+     * 新增：统一提交本次学习周期内的 AI 统计数据
+     */
+    public static void updateAiStatsSession(Long userId, int sleepyCount, int unfocusedCount, int aiHardWords, UpdateStatsCallback callback) {
+        executor.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL(NetworkConfig.UPDATE_AI_STATS_URL);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("POST");
+                connection.setRequestProperty("Content-Type", "application/json;charset=utf-8");
+                connection.setDoOutput(true);
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+
+                JSONObject requestBody = new JSONObject();
+                requestBody.put("userId", userId);
+                requestBody.put("sleepyCount", sleepyCount);
+                requestBody.put("unfocusedCount", unfocusedCount);
+                requestBody.put("aiHardWords", aiHardWords);
+
+                OutputStream os = connection.getOutputStream();
+                os.write(requestBody.toString().getBytes("UTF-8"));
+                os.flush();
+                os.close();
+
+                int responseCode = connection.getResponseCode();
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    mainHandler.post(callback::onSuccess);
+                } else {
+                    mainHandler.post(() -> callback.onFailure("网络请求失败，状态码：" + responseCode));
+                }
+            } catch (Exception e) {
+                Log.e("AiNetworkHelper", "更新统计异常", e);
+                mainHandler.post(() -> callback.onFailure("请求异常：" + e.getMessage()));
+            } finally {
+                if (connection != null) connection.disconnect();
             }
         });
     }

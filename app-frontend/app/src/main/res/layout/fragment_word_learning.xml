@@ -74,7 +74,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="ancestry"
-                            android:textSize="36sp"
+                            android:textSize="25sp"
                             android:fontFamily="@font/playpen_sans_semibold" />
                         <TextView
                             android:id="@+id/tvDifficulty"

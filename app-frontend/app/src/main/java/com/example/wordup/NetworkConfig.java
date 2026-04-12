@@ -32,4 +32,9 @@ public class NetworkConfig {
     // ==========================================
     public static final String GET_WORD_BATCH_URL = BASE_URL + "/api/learning/batch";
     public static final String SUBMIT_WORD_ACTION_URL = BASE_URL + "/api/learning/action";
+
+    // ==========================================
+    // 新增：AI 专注度与情绪数据聚合上报接口
+    // ==========================================
+    public static final String UPDATE_AI_STATS_URL = BASE_URL + "/api/statistics/updateAiStats";
 }

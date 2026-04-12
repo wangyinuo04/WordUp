@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -48,8 +49,8 @@ import java.util.concurrent.Executors;
 
 /**
  * 单词学习页面 Fragment。
- * 已完善：基于确切数据库难度映射(1难, 2中, 3易)的AI情绪实时调度单词难度策略。
- * 修复版：注入全局异步生命周期安全校验防止闪退；并在视图初始化阶段抹除 XML 默认占位数据防止闪现。
+ * 已完善：基于确切数据库难度映射的AI情绪实时调度单词难度策略。
+ * 新增：AI专注度与情绪数据的本地聚合、页面退出时的统一上报，以及偏离镜头的 UI 警告机制。
  */
 public class WordLearningFragment extends Fragment {
 
@@ -105,6 +106,13 @@ public class WordLearningFragment extends Fragment {
 
     // 全局记录当前实时情绪状态
     private String currentEmotionState = "Neutral";
+
+    // AI 本地统计聚合变量与防抖冷却时间戳
+    private int sessionSleepyCount = 0;
+    private int sessionUnfocusedCount = 0;
+    private int sessionAiHardWords = 0;
+    private long lastSleepyRecordTime = 0;
+    private long lastUnfocusedRecordTime = 0;
 
     private ExecutorService cameraExecutor;
     private FaceMeshAnalyzer aiAnalyzer;
@@ -211,7 +219,6 @@ public class WordLearningFragment extends Fragment {
         AiNetworkHelper.getAiSettings(CURRENT_USER_ID, new AiNetworkHelper.GetSettingsCallback() {
             @Override
             public void onSuccess(UserPlan plan) {
-                // 防止 Fragment 被退栈后触发渲染导致空指针闪退
                 if (!isAdded() || getActivity() == null) return;
 
                 isAntiDozeOn = (plan.getAntiSleepOn() != null && plan.getAntiSleepOn() == 1);
@@ -291,11 +298,7 @@ public class WordLearningFragment extends Fragment {
 
         previewView = new PreviewView(requireContext());
 
-        // ========================================================================
-        // 核心修复：执行视觉静默。清空 XML 中写死的默认占位数据，防止网络请求期间的闪现
-        // ========================================================================
         if (tvProgress != null) {
-            // 此时 totalWords 已经从 Argument 中获取到了真实的配额（如 80 或 160）
             tvProgress.setText("-/" + totalWords);
         }
         if (tvWord != null) tvWord.setText("");
@@ -303,7 +306,7 @@ public class WordLearningFragment extends Fragment {
         if (tvDefinition != null) tvDefinition.setText("");
         if (tvDifficulty != null) {
             tvDifficulty.setText("");
-            tvDifficulty.setBackgroundResource(0); // 清除死数据的默认背景框
+            tvDifficulty.setBackgroundResource(0);
         }
         if (layoutDefinitionContainer != null) {
             layoutDefinitionContainer.setVisibility(View.INVISIBLE);
@@ -311,7 +314,6 @@ public class WordLearningFragment extends Fragment {
         if (tvHintClick != null) {
             tvHintClick.setVisibility(View.INVISIBLE);
         }
-        // ========================================================================
 
         if (vpAiPanels != null) {
             vpAiPanels.setAdapter(new AiPagerAdapter());
@@ -347,7 +349,6 @@ public class WordLearningFragment extends Fragment {
         WordLearningNetworkHelper.getWordBatch(CURRENT_USER_ID, CURRENT_BOOK_ID, 50, isReviewMode, new WordLearningNetworkHelper.GetBatchCallback() {
             @Override
             public void onSuccess(List<WordLearningVO> wordList, int offset) {
-                // 如果在网络请求期间用户已退栈或者页面触发销毁操作，则拦截处理逻辑
                 if (!isAdded() || getActivity() == null) return;
 
                 isFetchingBatch = false;
@@ -402,6 +403,11 @@ public class WordLearningFragment extends Fragment {
         if (targetIndex != -1 && targetIndex != currentBatchIndex + 1) {
             WordLearningVO targetWord = currentBatchList.remove(targetIndex);
             currentBatchList.add(currentBatchIndex + 1, targetWord);
+
+            // 本地数据聚合：记录 AI 情绪调度干预而推送的难词次数
+            if ("Positive".equals(currentEmotionState) && targetWord.getDifficulty() != null && targetWord.getDifficulty() == 1) {
+                sessionAiHardWords++;
+            }
         }
     }
 
@@ -564,7 +570,6 @@ public class WordLearningFragment extends Fragment {
 
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
         cameraProviderFuture.addListener(() -> {
-            // 防止 Fragment 视图被系统销毁时调用 getViewLifecycleOwner() 导致生命周期异常闪退
             if (!isAdded() || getView() == null) return;
 
             try {
@@ -594,8 +599,31 @@ public class WordLearningFragment extends Fragment {
             return;
         }
 
+        long currentTime = SystemClock.elapsedRealtime();
+
+        // ==========================================
+        // 防抖统计 疲劳/瞌睡行为 (5秒冷却期)
+        // ==========================================
         if (isAntiDozeOn && result.fatigueLevel == 1) {
+            if (currentTime - lastSleepyRecordTime > 5000) {
+                sessionSleepyCount++;
+                lastSleepyRecordTime = currentTime;
+            }
             showTopAlert("监测到极度疲劳，请注意休息！");
+            triggerVibrationAlert();
+        }
+
+        // ==========================================
+        // 防抖统计 偏离专注行为 (5秒冷却期)
+        // 依据底层SDK特性，使用 statusMessage 判断未检测到人脸
+        // ==========================================
+        if (result.statusMessage != null && result.statusMessage.contains("未检测到人脸")) {
+            if (currentTime - lastUnfocusedRecordTime > 5000) {
+                sessionUnfocusedCount++;
+                lastUnfocusedRecordTime = currentTime;
+            }
+            // 触发与防瞌睡一致的 UI 弹窗与震动提醒
+            showTopAlert("偏离镜头，请保持面部在画面内！");
             triggerVibrationAlert();
         }
 
@@ -704,6 +732,33 @@ public class WordLearningFragment extends Fragment {
         }
     }
 
+    private void uploadAiStatsSession() {
+        // 如果本次学习产生了任何有效数据，则打包上传
+        if (sessionSleepyCount > 0 || sessionUnfocusedCount > 0 || sessionAiHardWords > 0) {
+            AiNetworkHelper.updateAiStatsSession(
+                    CURRENT_USER_ID,
+                    sessionSleepyCount,
+                    sessionUnfocusedCount,
+                    sessionAiHardWords,
+                    new AiNetworkHelper.UpdateStatsCallback() {
+                        @Override
+                        public void onSuccess() {
+                            Log.d("WordLearning", "本次学习周期 AI 统计数据已成功上报！");
+                        }
+
+                        @Override
+                        public void onFailure(String errorMsg) {
+                            Log.e("WordLearning", "AI 统计数据上报失败: " + errorMsg);
+                        }
+                    });
+
+            // 清零防止二次触发销毁时重复上报
+            sessionSleepyCount = 0;
+            sessionUnfocusedCount = 0;
+            sessionAiHardWords = 0;
+        }
+    }
+
     private void goBack() {
         if (getActivity() != null && isAdded()) {
             getActivity().getSupportFragmentManager().popBackStack();
@@ -712,6 +767,9 @@ public class WordLearningFragment extends Fragment {
 
     @Override
     public void onDestroyView() {
+        // 页面销毁时，拦截并强制上报暂存的统计数据
+        uploadAiStatsSession();
+
         super.onDestroyView();
         if (tvTopAlertBanner != null) {
             tvTopAlertBanner.removeCallbacks(hideAlertRunnable);

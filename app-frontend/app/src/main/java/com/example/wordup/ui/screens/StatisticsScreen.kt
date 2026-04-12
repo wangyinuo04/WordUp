@@ -39,8 +39,8 @@ fun StatisticsScreen(userId: Long, viewModel: StatisticsViewModel = viewModel())
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
-                CoreOverviewCard(state = viewModel.overviewState)
+                //Spacer(modifier = Modifier.height(8.dp))
+                //CoreOverviewCard(state = viewModel.overviewState)
                 MemoryFunnelCard(state = viewModel.funnelState)
                 AiEmotionCard(state = viewModel.aiEmotionState)
                 HardWordsCard(state = viewModel.hardWordsState)

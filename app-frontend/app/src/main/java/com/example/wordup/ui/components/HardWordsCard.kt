@@ -120,17 +120,23 @@ private fun HeatmapGrid(levels: List<Int>) {
             .background(SurfaceContainerLow)
             .padding(16.dp)
     ) {
-        // 渲染 3 行 12 列的热力图矩阵
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // 渲染 3 行 12 列的热力图矩阵 (自适应宽度，绝不超出屏幕)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             for (row in 0 until 3) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     for (col in 0 until 12) {
                         val index = row * 12 + col
                         val level = levels.getOrElse(index) { 0 }
-                        HeatmapBlock(level = level)
+                        // 【修复核心】：传入 weight 使其根据屏幕宽度自动等比平分，防止最右侧被裁剪！
+                        HeatmapBlock(
+                            level = level,
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f) // 强制保持正方形
+                        )
                     }
                 }
             }
@@ -146,10 +152,10 @@ private fun HeatmapGrid(levels: List<Int>) {
         ) {
             Text(text = "Less", style = AppTypography.labelMedium.copy(fontSize = 10.sp), color = Outline)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                HeatmapBlock(level = 0, size = 10.dp)
-                HeatmapBlock(level = 1, size = 10.dp)
-                HeatmapBlock(level = 3, size = 10.dp)
-                HeatmapBlock(level = 4, size = 10.dp)
+                HeatmapBlock(level = 0, modifier = Modifier.size(10.dp))
+                HeatmapBlock(level = 1, modifier = Modifier.size(10.dp))
+                HeatmapBlock(level = 3, modifier = Modifier.size(10.dp))
+                HeatmapBlock(level = 4, modifier = Modifier.size(10.dp))
             }
             Text(text = "More", style = AppTypography.labelMedium.copy(fontSize = 10.sp), color = Outline)
         }
@@ -157,7 +163,7 @@ private fun HeatmapGrid(levels: List<Int>) {
 }
 
 @Composable
-private fun HeatmapBlock(level: Int, size: androidx.compose.ui.unit.Dp = 22.dp) {
+private fun HeatmapBlock(level: Int, modifier: Modifier = Modifier) {
     val blockColor = when (level) {
         0 -> SurfaceContainerHighest
         1 -> Secondary.copy(alpha = 0.3f)
@@ -166,9 +172,9 @@ private fun HeatmapBlock(level: Int, size: androidx.compose.ui.unit.Dp = 22.dp) 
         else -> Secondary
     }
 
+    // 移除写死的固定大小，采用外部传入的 modifier 控制
     Box(
-        modifier = Modifier
-            .size(size)
+        modifier = modifier
             .clip(RoundedCornerShape(4.dp))
             .background(blockColor)
     )

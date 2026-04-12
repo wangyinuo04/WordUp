@@ -57,10 +57,16 @@ fun AiEmotionCard(state: AiEmotionState) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // 2. 近七日趋势图模拟
+        // 2. 近七日趋势图 (改造为展示每日专注度)
+        Text(
+            text = "近7日专注度走势",
+            style = AppTypography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = Outline,
+            modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
+        )
         WeeklyTrendChart(trendData = state.weeklyTrend)
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // 3. 异常状态微型卡片
         MicroStatusCard(

@@ -1,5 +1,6 @@
 package com.example.appbackend.service;
 
+import com.example.appbackend.dto.AiStatsUpdateDTO;
 import com.example.appbackend.vo.StatisticsDashboardVO;
 
 /**
@@ -13,4 +14,10 @@ public interface StatisticsService {
      * @return 组装完毕的视图对象
      */
     StatisticsDashboardVO getDashboardStats(Long userId);
+
+    /**
+     * 更新用户当日的 AI 专注度与情绪统计数据
+     * @param dto 包含累加数据的传输对象
+     */
+    void updateAiStats(AiStatsUpdateDTO dto);
 }

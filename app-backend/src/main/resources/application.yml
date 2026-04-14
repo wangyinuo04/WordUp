@@ -1,28 +1,25 @@
 server:
   port: 8080
-  address: 0.0.0.0  # 核心：允许所有网络设备（包括模拟器）访问
+  address: 0.0.0.0
 
 spring:
-  # 数据库连接配置
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/ai_app_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: 723102517  # ⚠️ 记得确认这里是你的真实密码
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/ai_app_db?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:723102517}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
-  # 之前配置好的 Redis 保持不变
   data:
     redis:
-      host: 127.0.0.1
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 100MB
 
-
-
-# MyBatis-Plus 配置（建议加上，方便调试）
 mybatis-plus:
   configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl # 在控制台打印 SQL 语句，方便看有没有更新成功
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

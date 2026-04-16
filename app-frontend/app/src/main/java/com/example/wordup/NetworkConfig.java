@@ -2,11 +2,11 @@ package com.example.wordup;
 
 public class NetworkConfig {
     /**
-     * 10.0.2.2 是安卓模拟器访问电脑主机的标准地址。
-     * 如果连不上，请临时改为你电脑的真 IP (例如 "http://192.168.198.168:8080")。RegisterActivity.java中也需要修改对应的IP地址
-     * 提交给队友前记得改回 10.0.2.2。
+     * 🌐 云端生产环境（Railway 部署）
+     * 如果需要在本地模拟器测试，可以临时改为 "http://10.0.2.2:8080"
+     * 但打包前务必改回 Railway 地址。
      */
-    public static final String BASE_URL = "http://192.168.198.168:8080";
+    public static final String BASE_URL = "https://wordup-production.up.railway.app";
 
     // 拼接具体的接口路径
     public static final String UPDATE_PROFILE_URL = BASE_URL + "/updateProfile";

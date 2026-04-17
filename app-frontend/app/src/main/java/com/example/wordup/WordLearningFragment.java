@@ -36,21 +36,32 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
+import com.example.wordup.db.AppDatabase;
+import com.example.wordup.db.dao.LocalDataDao;
+import com.example.wordup.db.entity.LocalUserWordRecord;
+import com.example.wordup.db.entity.LocalWord;
+import com.example.wordup.db.sync.DataSyncManager;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.wordup.ai.analyzer.FaceMeshAnalyzer;
 import com.wordup.ai.analyzer.WordUpAIResult;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * 单词学习页面 Fragment。
- * 已完善：基于确切数据库难度映射的AI情绪实时调度单词难度策略。
- * 新增：AI专注度与情绪数据的本地聚合、页面退出时的统一上报，以及偏离镜头的 UI 警告机制。
+ * 业务逻辑说明：
+ * 1. 采用高灵敏度报警策略：极度疲劳判定同时监听 fatigueLevel 标志位与 statusMessage 文本。
+ * 2. UI 状态同步：基于 statusMessage 实时渲染学习者的专注状态。
+ * 3. 统计上报：自动聚合单次学习周期内的 AI 干预数据并上报至服务器。
+ * 4. 离线架构：采用纯本地 SQLite 驱动背词流程，内置艾宾浩斯调度引擎，支持后台静默数据同步。
  */
 public class WordLearningFragment extends Fragment {
 
@@ -71,7 +82,6 @@ public class WordLearningFragment extends Fragment {
     private ViewPager2 vpAiPanels;
     private PreviewView previewView;
 
-    // AI面板底部圆点指示器的父容器与子视图数组
     private LinearLayout layoutAiIndicators;
     private View[] indicatorDots;
 
@@ -104,15 +114,11 @@ public class WordLearningFragment extends Fragment {
     private long CURRENT_USER_ID;
     private long CURRENT_BOOK_ID;
 
-    // 全局记录当前实时情绪状态
     private String currentEmotionState = "Neutral";
 
-    // AI 本地统计聚合变量与防抖冷却时间戳
     private int sessionSleepyCount = 0;
     private int sessionUnfocusedCount = 0;
     private int sessionAiHardWords = 0;
-    private long lastSleepyRecordTime = 0;
-    private long lastUnfocusedRecordTime = 0;
 
     private ExecutorService cameraExecutor;
     private FaceMeshAnalyzer aiAnalyzer;
@@ -259,7 +265,7 @@ public class WordLearningFragment extends Fragment {
                 checkCameraPermissionAndInit();
             }
 
-            updateAIStatus(1.0f, 0.5f);
+            updateAIStatus("✅ 状态清醒", 0, 100, 0.5f);
         }
 
         if (vpAiPanels != null && vpAiPanels.getAdapter() != null) {
@@ -301,19 +307,6 @@ public class WordLearningFragment extends Fragment {
         if (tvProgress != null) {
             tvProgress.setText("-/" + totalWords);
         }
-        if (tvWord != null) tvWord.setText("");
-        if (tvPhonetic != null) tvPhonetic.setText("");
-        if (tvDefinition != null) tvDefinition.setText("");
-        if (tvDifficulty != null) {
-            tvDifficulty.setText("");
-            tvDifficulty.setBackgroundResource(0);
-        }
-        if (layoutDefinitionContainer != null) {
-            layoutDefinitionContainer.setVisibility(View.INVISIBLE);
-        }
-        if (tvHintClick != null) {
-            tvHintClick.setVisibility(View.INVISIBLE);
-        }
 
         if (vpAiPanels != null) {
             vpAiPanels.setAdapter(new AiPagerAdapter());
@@ -342,138 +335,204 @@ public class WordLearningFragment extends Fragment {
         }
     }
 
+    /**
+     * 【本地数据库提取】执行离线单词池调度计算
+     */
     private void fetchNextBatch() {
         if (isFetchingBatch) return;
         isFetchingBatch = true;
 
-        WordLearningNetworkHelper.getWordBatch(CURRENT_USER_ID, CURRENT_BOOK_ID, 50, isReviewMode, new WordLearningNetworkHelper.GetBatchCallback() {
-            @Override
-            public void onSuccess(List<WordLearningVO> wordList, int offset) {
-                if (!isAdded() || getActivity() == null) return;
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                LocalDataDao dao = AppDatabase.getInstance(requireContext()).localDataDao();
+                List<LocalWord> allWords = dao.getWordsByBookId(CURRENT_BOOK_ID);
+                List<LocalUserWordRecord> userRecords = dao.getUserRecords(CURRENT_USER_ID);
 
-                isFetchingBatch = false;
-
-                if (wordList == null || wordList.isEmpty()) {
-                    String finishMsg = isReviewMode ? "🎉 恭喜！今日复习任务已全部完成！" : "🎉 恭喜！今日新词学习已达标！";
-                    showSafeToast(finishMsg);
-                    goBack();
-                    return;
+                Map<Long, LocalUserWordRecord> recordMap = new HashMap<>();
+                if (userRecords != null) {
+                    for (LocalUserWordRecord r : userRecords) {
+                        recordMap.put(r.word_id, r);
+                    }
                 }
 
-                overallStudiedCount = offset;
-                currentBatchList = wordList;
-                currentBatchIndex = 0;
-                loadWord(currentBatchIndex);
-            }
+                long currentTime = System.currentTimeMillis();
+                List<WordLearningVO> batch = new ArrayList<>();
+                int offsetCount = 0;
 
-            @Override
-            public void onFailure(String errorMsg) {
-                if (!isAdded() || getActivity() == null) return;
-                isFetchingBatch = false;
-                showSafeToast("获取单词批次失败: " + errorMsg);
+                // 本地艾宾浩斯双轨制状态过滤引擎
+                for (LocalWord w : allWords) {
+                    LocalUserWordRecord r = recordMap.get(w.id);
+                    boolean isLearned = (r != null);
+
+                    if (isReviewMode) {
+                        if (isLearned && r.learn_status != null && r.learn_status == 1) {
+                            if (r.next_review_time != null && r.next_review_time <= currentTime) {
+                                if (batch.size() < 50) batch.add(mapToVO(w));
+                            } else {
+                                offsetCount++;
+                            }
+                        } else if (isLearned && r.learn_status != null && r.learn_status == 2) {
+                            offsetCount++;
+                        }
+                    } else {
+                        if (!isLearned) {
+                            if (batch.size() < 50) batch.add(mapToVO(w));
+                        } else {
+                            offsetCount++;
+                        }
+                    }
+                }
+
+                final int finalOffset = offsetCount;
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        isFetchingBatch = false;
+                        if (batch.isEmpty()) {
+                            String finishMsg = isReviewMode ? "今日复习任务已完成！" : "今日学习任务已达标！";
+                            showSafeToast(finishMsg);
+                            goBack();
+                            return;
+                        }
+
+                        overallStudiedCount = finalOffset;
+                        currentBatchList = batch;
+                        currentBatchIndex = 0;
+                        loadWord(currentBatchIndex);
+                    });
+                }
+            } catch (Exception e) {
+                Log.e("WordLearning", "读取本地缓存异常", e);
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        isFetchingBatch = false;
+                        showSafeToast("本地缓存读取失败: " + e.getMessage());
+                    });
+                }
             }
         });
     }
 
+    private WordLearningVO mapToVO(LocalWord lw) {
+        WordLearningVO vo = new WordLearningVO();
+        vo.setWordId(lw.id);
+        vo.setSpelling(lw.spelling);
+        vo.setPhonetic(lw.phonetic);
+        vo.setTranslation(lw.translation);
+        vo.setDifficulty(lw.difficulty);
+        return vo;
+    }
+
     private void applyEmotionScheduling() {
-        if (!isEmotionOn || currentBatchList == null || currentBatchIndex + 1 >= currentBatchList.size()) {
-            return;
-        }
-
+        if (!isEmotionOn || currentBatchList == null || currentBatchIndex + 1 >= currentBatchList.size()) return;
         int targetIndex = -1;
-
         if ("Positive".equals(currentEmotionState)) {
             for (int i = currentBatchIndex + 1; i < currentBatchList.size(); i++) {
-                Integer diff = currentBatchList.get(i).getDifficulty();
-                if (diff != null && diff == 1) {
+                if (currentBatchList.get(i).getDifficulty() != null && currentBatchList.get(i).getDifficulty() == 1) {
                     targetIndex = i;
                     break;
                 }
             }
         } else if ("Negative".equals(currentEmotionState)) {
             for (int i = currentBatchIndex + 1; i < currentBatchList.size(); i++) {
-                Integer diff = currentBatchList.get(i).getDifficulty();
-                if (diff != null && diff == 3) {
+                if (currentBatchList.get(i).getDifficulty() != null && currentBatchList.get(i).getDifficulty() == 3) {
                     targetIndex = i;
                     break;
                 }
             }
         }
-
         if (targetIndex != -1 && targetIndex != currentBatchIndex + 1) {
             WordLearningVO targetWord = currentBatchList.remove(targetIndex);
             currentBatchList.add(currentBatchIndex + 1, targetWord);
-
-            // 本地数据聚合：记录 AI 情绪调度干预而推送的难词次数
-            if ("Positive".equals(currentEmotionState) && targetWord.getDifficulty() != null && targetWord.getDifficulty() == 1) {
-                sessionAiHardWords++;
-            }
+            if ("Positive".equals(currentEmotionState) && targetWord.getDifficulty() == 1) sessionAiHardWords++;
         }
     }
 
+    /**
+     * 【本地数据库注入】基于艾宾浩斯曲线写入本地 SQLite，并触发队列异步上传
+     */
     private void submitActionAndNext(boolean isKnown) {
         if (currentBatchList == null || currentBatchList.isEmpty() || currentBatchIndex >= currentBatchList.size()) return;
 
         WordLearningVO currentWord = currentBatchList.get(currentBatchIndex);
 
-        if (isKnown) {
-            showSafeToast("太棒了！继续加油！");
-        } else {
-            showSafeToast("已加入高频优先复习计划");
-        }
+        showSafeToast(isKnown ? "太棒了！继续加油！" : "已加入高频优先复习计划");
 
-        WordLearningNetworkHelper.submitWordAction(CURRENT_USER_ID, currentWord.getWordId(), isKnown, new WordLearningNetworkHelper.SubmitActionCallback() {
-            @Override
-            public void onSuccess() {}
-            @Override
-            public void onFailure(String errorMsg) {}
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                LocalDataDao dao = AppDatabase.getInstance(requireContext()).localDataDao();
+                LocalUserWordRecord record = dao.getUserRecord(CURRENT_USER_ID, currentWord.getWordId());
+                long now = System.currentTimeMillis();
+
+                if (record == null) {
+                    record = new LocalUserWordRecord();
+                    record.user_id = CURRENT_USER_ID;
+                    record.word_id = currentWord.getWordId();
+                    record.learn_status = 1;
+                    record.sync_status = 1;
+                    if (isKnown) {
+                        record.current_stage = 2;
+                        record.next_review_time = now + 86400000L; // 延迟1天
+                    } else {
+                        record.current_stage = 1;
+                        record.next_review_time = now; // 立即安排复习
+                    }
+                    dao.insertRecords(Collections.singletonList(record));
+                } else {
+                    record.sync_status = 1;
+                    if (isKnown) {
+                        int nextStage = Math.min(record.current_stage + 1, 5);
+                        record.current_stage = nextStage;
+                        record.next_review_time = calculateNextTime(nextStage, now);
+                        if (nextStage == 5) {
+                            record.learn_status = 2; // 满级标记为已掌握
+                        }
+                    } else {
+                        record.current_stage = 1;
+                        record.next_review_time = now;
+                    }
+                    dao.updateRecord(record);
+                }
+
+                // 触发数据同步层的增量上传
+                DataSyncManager.getInstance(requireContext()).pushLocalProgressToCloud(CURRENT_USER_ID);
+
+            } catch (Exception e) {
+                Log.e("WordLearning", "离线进度保存异常: " + e.getMessage());
+            }
         });
 
         applyEmotionScheduling();
-
         nextWord();
+    }
+
+    private long calculateNextTime(int stage, long baseTime) {
+        switch (stage) {
+            case 2: return baseTime + 86400000L;   // 1天
+            case 3: return baseTime + 172800000L;  // 2天
+            case 4: return baseTime + 345600000L;  // 4天
+            case 5: return baseTime + 604800000L;  // 7天
+            default: return baseTime;
+        }
     }
 
     private void nextWord() {
         overallStudiedCount++;
         currentBatchIndex++;
-
-        if (currentBatchIndex < currentBatchList.size()) {
-            loadWord(currentBatchIndex);
-        } else {
-            fetchNextBatch();
-        }
+        if (currentBatchIndex < currentBatchList.size()) loadWord(currentBatchIndex);
+        else fetchNextBatch();
     }
 
     private void setupClickListeners() {
-        if (btnBack != null) {
-            btnBack.setOnClickListener(v -> {
-                if (!isFastDoubleClick()) goBack();
-            });
-        }
-        if (btnUnfamiliar != null) {
-            btnUnfamiliar.setOnClickListener(v -> {
-                if (!isFastDoubleClick()) submitActionAndNext(false);
-            });
-        }
-        if (btnFamiliar != null) {
-            btnFamiliar.setOnClickListener(v -> {
-                if (!isFastDoubleClick()) submitActionAndNext(true);
-            });
-        }
-        if (viewClickTarget != null && layoutDefinitionContainer != null) {
-            viewClickTarget.setOnClickListener(v -> layoutDefinitionContainer.setVisibility(View.VISIBLE));
-        }
-        if (tvHintClick != null) {
-            tvHintClick.setOnClickListener(v -> {
-                tvHintClick.setVisibility(View.GONE);
-                if (tvChineseMeaning != null) tvChineseMeaning.setVisibility(View.VISIBLE);
-                if (layoutDefinitionContainer != null) layoutDefinitionContainer.setVisibility(View.VISIBLE);
-            });
-        }
-        if (btnGoToAiSettings != null) {
-            btnGoToAiSettings.setOnClickListener(v -> startActivity(new Intent(requireContext(), AISettingsActivity.class)));
-        }
+        if (btnBack != null) btnBack.setOnClickListener(v -> { if (!isFastDoubleClick()) goBack(); });
+        if (btnUnfamiliar != null) btnUnfamiliar.setOnClickListener(v -> { if (!isFastDoubleClick()) submitActionAndNext(false); });
+        if (btnFamiliar != null) btnFamiliar.setOnClickListener(v -> { if (!isFastDoubleClick()) submitActionAndNext(true); });
+        if (viewClickTarget != null) viewClickTarget.setOnClickListener(v -> { if (layoutDefinitionContainer != null) layoutDefinitionContainer.setVisibility(View.VISIBLE); });
+        if (tvHintClick != null) tvHintClick.setOnClickListener(v -> {
+            tvHintClick.setVisibility(View.GONE);
+            if (tvChineseMeaning != null) tvChineseMeaning.setVisibility(View.VISIBLE);
+            if (layoutDefinitionContainer != null) layoutDefinitionContainer.setVisibility(View.VISIBLE);
+        });
+        if (btnGoToAiSettings != null) btnGoToAiSettings.setOnClickListener(v -> startActivity(new Intent(requireContext(), AISettingsActivity.class)));
     }
 
     private boolean isFastDoubleClick() {
@@ -502,33 +561,20 @@ public class WordLearningFragment extends Fragment {
     private void loadWord(int index) {
         if (currentBatchList == null || index >= currentBatchList.size()) return;
         WordLearningVO wordVO = currentBatchList.get(index);
-
-        if (tvProgress != null) {
-            tvProgress.setText((overallStudiedCount + 1) + "/" + totalWords);
-        }
-
+        if (tvProgress != null) tvProgress.setText((overallStudiedCount + 1) + "/" + totalWords);
         if (layoutDefinitionContainer != null) layoutDefinitionContainer.setVisibility(View.INVISIBLE);
         if (tvHintClick != null) tvHintClick.setVisibility(View.VISIBLE);
-        if (tvChineseMeaning != null) {
-            tvChineseMeaning.setVisibility(View.GONE);
-            tvChineseMeaning.setText("");
-        }
-
-        String wordSpelling = wordVO.getSpelling();
-        if (tvWord != null) tvWord.setText(wordSpelling);
-        if (tvPhonetic != null) {
-            String phonetic = wordVO.getPhonetic();
-            tvPhonetic.setText((phonetic != null && !phonetic.isEmpty()) ? phonetic : "");
-        }
+        if (tvChineseMeaning != null) { tvChineseMeaning.setVisibility(View.GONE); tvChineseMeaning.setText(""); }
+        if (tvWord != null) tvWord.setText(wordVO.getSpelling());
+        if (tvPhonetic != null) tvPhonetic.setText(wordVO.getPhonetic() != null ? wordVO.getPhonetic() : "");
         if (tvDefinition != null) tvDefinition.setText(wordVO.getTranslation());
-
         if (tvDifficulty != null) {
-            Integer difficultyValue = wordVO.getDifficulty();
-            if (difficultyValue != null && difficultyValue == 1) {
+            Integer diff = wordVO.getDifficulty();
+            if (diff != null && diff == 1) {
                 tvDifficulty.setText("难");
                 tvDifficulty.setTextColor(Color.parseColor("#FF5252"));
                 tvDifficulty.setBackgroundResource(R.drawable.bg_difficulty_tag_hard);
-            } else if (difficultyValue != null && difficultyValue == 2) {
+            } else if (diff != null && diff == 2) {
                 tvDifficulty.setText("中");
                 tvDifficulty.setTextColor(Color.parseColor("#FF9800"));
                 tvDifficulty.setBackgroundResource(R.drawable.bg_difficulty_tag_middle);
@@ -541,18 +587,13 @@ public class WordLearningFragment extends Fragment {
     }
 
     private void checkCameraPermissionAndInit() {
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            initCameraAndAI();
-        } else {
-            requestPermissionLauncher.launch(Manifest.permission.CAMERA);
-        }
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) initCameraAndAI();
+        else requestPermissionLauncher.launch(Manifest.permission.CAMERA);
     }
 
     private void handlePermissionDenied() {
         showSafeToast("需授予相机权限以启用 AI 监测功能");
-        isAntiDozeOn = false;
-        isEmotionOn = false;
-        isAIFeatureEnabled = isAiSentenceOn;
+        isAntiDozeOn = false; isEmotionOn = false; isAIFeatureEnabled = isAiSentenceOn;
         applyAiSettingsToUI();
     }
 
@@ -560,118 +601,76 @@ public class WordLearningFragment extends Fragment {
         if (cameraExecutor != null) return;
         cameraExecutor = Executors.newSingleThreadExecutor();
         aiAnalyzer = new FaceMeshAnalyzer(requireContext(), result -> {
-            if (getActivity() != null && isAdded()) {
-                getActivity().runOnUiThread(() -> processAIResult(result));
-            }
+            if (getActivity() != null && isAdded()) getActivity().runOnUiThread(() -> processAIResult(result));
         });
-
         aiAnalyzer.setFatigueDetectionEnabled(isAntiDozeOn);
         aiAnalyzer.setEmotionDetectionEnabled(isEmotionOn);
 
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
         cameraProviderFuture.addListener(() -> {
             if (!isAdded() || getView() == null) return;
-
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-
                 Preview preview = new Preview.Builder().build();
                 preview.setSurfaceProvider(previewView.getSurfaceProvider());
-
-                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build();
+                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build();
                 imageAnalysis.setAnalyzer(cameraExecutor, aiAnalyzer);
-
-                CameraSelector cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA;
                 cameraProvider.unbindAll();
-                cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageAnalysis);
-            } catch (ExecutionException | InterruptedException e) {
-                e.printStackTrace();
-            }
+                cameraProvider.bindToLifecycle(getViewLifecycleOwner(), CameraSelector.DEFAULT_FRONT_CAMERA, preview, imageAnalysis);
+            } catch (ExecutionException | InterruptedException e) { e.printStackTrace(); }
         }, ContextCompat.getMainExecutor(requireContext()));
     }
 
+    /**
+     * AI 结果核心处理方法。
+     * 极度疲劳判定同时监听 fatigueLevel 标志位与 statusMessage，提升预警即时性。
+     */
     private void processAIResult(WordUpAIResult result) {
         if (!isAIFeatureEnabled || getView() == null || !isAdded()) return;
+        if (result.isCalibrating) return;
 
-        if (result.isCalibrating) {
-            return;
-        }
-
-        long currentTime = SystemClock.elapsedRealtime();
-
-        // ==========================================
-        // 防抖统计 疲劳/瞌睡行为 (5秒冷却期)
-        // ==========================================
-        if (isAntiDozeOn && result.fatigueLevel == 1) {
-            if (currentTime - lastSleepyRecordTime > 5000) {
+        if (isAntiDozeOn) {
+            boolean isFatiguedByMessage = result.statusMessage != null && result.statusMessage.contains("持续闭眼报警");
+            if (result.fatigueLevel == 1 || isFatiguedByMessage) {
                 sessionSleepyCount++;
-                lastSleepyRecordTime = currentTime;
-            }
-            showTopAlert("监测到极度疲劳，请注意休息！");
-            triggerVibrationAlert();
-        }
-
-        // ==========================================
-        // 防抖统计 偏离专注行为 (5秒冷却期)
-        // 依据底层SDK特性，使用 statusMessage 判断未检测到人脸
-        // ==========================================
-        if (result.statusMessage != null && result.statusMessage.contains("未检测到人脸")) {
-            if (currentTime - lastUnfocusedRecordTime > 5000) {
+                showTopAlert("极度疲劳");
+                triggerVibrationAlert();
+            } else if (result.statusMessage != null && result.statusMessage.contains("未检测到人脸")) {
                 sessionUnfocusedCount++;
-                lastUnfocusedRecordTime = currentTime;
+                showTopAlert("未检测到人脸");
+                triggerVibrationAlert();
             }
-            // 触发与防瞌睡一致的 UI 弹窗与震动提醒
-            showTopAlert("偏离镜头，请保持面部在画面内！");
-            triggerVibrationAlert();
         }
 
-        float drowsinessRatio = result.fatigueScore / 100f;
         float emotionRatio;
+        if ("Positive".equals(result.emotion)) { emotionRatio = 1.0f; currentEmotionState = "Positive"; }
+        else if ("Negative".equals(result.emotion)) { emotionRatio = 0.0f; currentEmotionState = "Negative"; }
+        else { emotionRatio = 0.5f; currentEmotionState = "Neutral"; }
 
-        if ("Positive".equals(result.emotion)) {
-            emotionRatio = 1.0f;
-            currentEmotionState = "Positive";
-        } else if ("Negative".equals(result.emotion)) {
-            emotionRatio = 0.0f;
-            currentEmotionState = "Negative";
-        } else {
-            emotionRatio = 0.5f;
-            currentEmotionState = "Neutral";
-        }
-
-        updateAIStatus(drowsinessRatio, emotionRatio);
+        updateAIStatus(result.statusMessage, result.fatigueLevel, result.fatigueScore, emotionRatio);
     }
 
     private void triggerVibrationAlert() {
         long currentTime = SystemClock.elapsedRealtime();
-        if (currentTime - lastVibrateTime < 3000) {
-            return;
-        }
+        if (currentTime - lastVibrateTime < 3000) return;
         lastVibrateTime = currentTime;
-
         if (getContext() == null) return;
         Vibrator vibrator = (Vibrator) getContext().getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator != null && vibrator.hasVibrator()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE));
-            } else {
-                vibrator.vibrate(500);
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE));
+            else vibrator.vibrate(500);
         }
     }
 
     private void setupBottomSheet(View view) {
         LinearLayout aiBottomSheet = view.findViewById(R.id.aiBottomSheet);
         if (aiBottomSheet == null) return;
-
         bottomSheetBehavior = BottomSheetBehavior.from(aiBottomSheet);
         bottomSheetBehavior.setHideable(true);
         bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
     }
 
-    public void updateAIStatus(float drowsiness, float emotion) {
+    public void updateAIStatus(String statusMessage, int fatigueLevel, int fatigueScore, float emotion) {
         if (!isAIFeatureEnabled || getView() == null || !isAdded()) return;
 
         if (tvFatigueScore != null && tvFatigueStatus != null && tvFatigueHint != null) {
@@ -679,23 +678,17 @@ public class WordLearningFragment extends Fragment {
                 tvFatigueStatus.setText("当前状态：未开启");
                 tvFatigueStatus.setTextColor(Color.parseColor("#888888"));
                 tvFatigueScore.setText("能量分数：--");
-                tvFatigueHint.setText("提示信息：请前往 AI设置 中开启");
             } else {
-                int score = (int) (drowsiness * 100);
-                tvFatigueScore.setText("能量分数：" + score);
-
-                if (score >= 80) {
-                    tvFatigueStatus.setText("当前状态：清醒");
-                    tvFatigueStatus.setTextColor(Color.parseColor("#4CAF50"));
-                    tvFatigueHint.setText("提示信息：专注力极佳，继续保持！");
-                } else if (score >= 40) {
-                    tvFatigueStatus.setText("当前状态：轻微疲劳");
-                    tvFatigueStatus.setTextColor(Color.parseColor("#FF9800"));
-                    tvFatigueHint.setText("提示信息：注意眨眼放松，适量补水。");
-                } else {
+                tvFatigueScore.setText("能量分数：" + fatigueScore);
+                boolean isFatiguedByMessage = statusMessage != null && statusMessage.contains("持续闭眼报警");
+                if (fatigueLevel == 1 || isFatiguedByMessage) {
                     tvFatigueStatus.setText("当前状态：极度疲劳");
                     tvFatigueStatus.setTextColor(Color.parseColor("#FF5252"));
-                    tvFatigueHint.setText("提示信息：建议立即休息片刻再继续！");
+                    tvFatigueHint.setText("提示信息：立即休息，避免过度疲劳！");
+                } else {
+                    tvFatigueStatus.setText("当前状态：清醒");
+                    tvFatigueStatus.setTextColor(Color.parseColor("#4CAF50"));
+                    tvFatigueHint.setText("提示信息：" + (statusMessage != null ? statusMessage : "状态良好"));
                 }
             }
         }
@@ -705,16 +698,9 @@ public class WordLearningFragment extends Fragment {
                 tvEmotionState.setText("当前情绪：未开启");
                 tvEmotionState.setTextColor(Color.parseColor("#888888"));
             } else {
-                if (emotion >= 0.8f) {
-                    tvEmotionState.setText("当前情绪：积极向上 \uD83D\uDE04");
-                    tvEmotionState.setTextColor(Color.parseColor("#4CAF50"));
-                } else if (emotion <= 0.2f) {
-                    tvEmotionState.setText("当前情绪：低落烦躁 \uD83D\uDE1E");
-                    tvEmotionState.setTextColor(Color.parseColor("#FF5252"));
-                } else {
-                    tvEmotionState.setText("当前情绪：平静专注 \uD83D\uDE10");
-                    tvEmotionState.setTextColor(Color.parseColor("#333333"));
-                }
+                if (emotion >= 0.8f) { tvEmotionState.setText("当前情绪：积极向上"); tvEmotionState.setTextColor(Color.parseColor("#4CAF50")); }
+                else if (emotion <= 0.2f) { tvEmotionState.setText("当前情绪：低落烦躁"); tvEmotionState.setTextColor(Color.parseColor("#FF5252")); }
+                else { tvEmotionState.setText("当前情绪：平静专注"); tvEmotionState.setTextColor(Color.parseColor("#333333")); }
             }
         }
     }
@@ -722,93 +708,45 @@ public class WordLearningFragment extends Fragment {
     private void attachPreviewViewToCurrentPage(int position) {
         if (previewView == null || getView() == null) return;
         ViewGroup parent = (ViewGroup) previewView.getParent();
-        if (parent != null) {
-            parent.removeView(previewView);
-        }
-        if (position == 0 && containerCameraFatigue != null) {
-            containerCameraFatigue.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        } else if (position == 1 && containerCameraEmotion != null) {
-            containerCameraEmotion.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        }
+        if (parent != null) parent.removeView(previewView);
+        if (position == 0 && containerCameraFatigue != null) containerCameraFatigue.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        else if (position == 1 && containerCameraEmotion != null) containerCameraEmotion.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     private void uploadAiStatsSession() {
-        // 如果本次学习产生了任何有效数据，则打包上传
         if (sessionSleepyCount > 0 || sessionUnfocusedCount > 0 || sessionAiHardWords > 0) {
-            AiNetworkHelper.updateAiStatsSession(
-                    CURRENT_USER_ID,
-                    sessionSleepyCount,
-                    sessionUnfocusedCount,
-                    sessionAiHardWords,
-                    new AiNetworkHelper.UpdateStatsCallback() {
-                        @Override
-                        public void onSuccess() {
-                            Log.d("WordLearning", "本次学习周期 AI 统计数据已成功上报！");
-                        }
-
-                        @Override
-                        public void onFailure(String errorMsg) {
-                            Log.e("WordLearning", "AI 统计数据上报失败: " + errorMsg);
-                        }
-                    });
-
-            // 清零防止二次触发销毁时重复上报
-            sessionSleepyCount = 0;
-            sessionUnfocusedCount = 0;
-            sessionAiHardWords = 0;
+            AiNetworkHelper.updateAiStatsSession(CURRENT_USER_ID, sessionSleepyCount, sessionUnfocusedCount, sessionAiHardWords, new AiNetworkHelper.UpdateStatsCallback() {
+                @Override public void onSuccess() { Log.d("WordLearning", "AI 统计上报成功"); }
+                @Override public void onFailure(String errorMsg) { Log.e("WordLearning", "AI 统计上报失败: " + errorMsg); }
+            });
+            sessionSleepyCount = 0; sessionUnfocusedCount = 0; sessionAiHardWords = 0;
         }
     }
 
-    private void goBack() {
-        if (getActivity() != null && isAdded()) {
-            getActivity().getSupportFragmentManager().popBackStack();
-        }
-    }
+    private void goBack() { if (getActivity() != null && isAdded()) getActivity().getSupportFragmentManager().popBackStack(); }
 
     @Override
     public void onDestroyView() {
-        // 页面销毁时，拦截并强制上报暂存的统计数据
         uploadAiStatsSession();
-
         super.onDestroyView();
-        if (tvTopAlertBanner != null) {
-            tvTopAlertBanner.removeCallbacks(hideAlertRunnable);
-        }
+        if (tvTopAlertBanner != null) tvTopAlertBanner.removeCallbacks(hideAlertRunnable);
         if (cameraExecutor != null) cameraExecutor.shutdown();
     }
 
     private void generateSentenceWithAI(String words, AppCompatButton btnAiGenerate, TextView tvAiSentenceResult) {
-        if (btnAiGenerate != null) {
-            btnAiGenerate.setEnabled(false);
-            btnAiGenerate.setText("生成中");
-        }
-
+        if (btnAiGenerate != null) { btnAiGenerate.setEnabled(false); btnAiGenerate.setText("生成中"); }
         AiNetworkHelper.generateSentenceWithAI(words, new AiNetworkHelper.GenerateSentenceCallback() {
             @Override
             public void onSuccess(String sentence) {
                 if (!isAdded() || getActivity() == null) return;
-                if (tvAiSentenceResult != null) {
-                    tvAiSentenceResult.setTextColor(Color.parseColor("#333333"));
-                    tvAiSentenceResult.setText(sentence);
-                }
-                if (btnAiGenerate != null) {
-                    btnAiGenerate.setEnabled(true);
-                    btnAiGenerate.setText("AI造句");
-                }
+                if (tvAiSentenceResult != null) { tvAiSentenceResult.setTextColor(Color.parseColor("#333333")); tvAiSentenceResult.setText(sentence); }
+                if (btnAiGenerate != null) { btnAiGenerate.setEnabled(true); btnAiGenerate.setText("AI造句"); }
             }
-
             @Override
             public void onFailure(String errorMsg) {
                 if (!isAdded() || getActivity() == null) return;
-                if (tvAiSentenceResult != null) {
-                    tvAiSentenceResult.setTextColor(Color.parseColor("#FF5252"));
-                    tvAiSentenceResult.setText("生成失败：" + errorMsg);
-                }
-                showSafeToast("AI 造句请求异常，请检查网络或配置");
-                if (btnAiGenerate != null) {
-                    btnAiGenerate.setEnabled(true);
-                    btnAiGenerate.setText("重试");
-                }
+                if (tvAiSentenceResult != null) { tvAiSentenceResult.setTextColor(Color.parseColor("#FF5252")); tvAiSentenceResult.setText("生成失败：" + errorMsg); }
+                if (btnAiGenerate != null) { btnAiGenerate.setEnabled(true); btnAiGenerate.setText("重试"); }
             }
         });
     }
@@ -818,96 +756,58 @@ public class WordLearningFragment extends Fragment {
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             LayoutInflater inflater = LayoutInflater.from(parent.getContext());
-            if (viewType == 0) {
-                View v = inflater.inflate(R.layout.layout_ai_panel_fatigue, parent, false);
-                return new FatigueViewHolder(v);
-            } else if (viewType == 1) {
-                View v = inflater.inflate(R.layout.layout_ai_panel_emotion, parent, false);
-                return new EmotionViewHolder(v);
-            } else {
-                View v = inflater.inflate(R.layout.layout_ai_panel_sentence, parent, false);
-                return new SentenceViewHolder(v);
-            }
+            if (viewType == 0) return new FatigueViewHolder(inflater.inflate(R.layout.layout_ai_panel_fatigue, parent, false));
+            else if (viewType == 1) return new EmotionViewHolder(inflater.inflate(R.layout.layout_ai_panel_emotion, parent, false));
+            else return new SentenceViewHolder(inflater.inflate(R.layout.layout_ai_panel_sentence, parent, false));
         }
-
-        @Override
-        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            if (vpAiPanels != null && position == vpAiPanels.getCurrentItem()) {
-                attachPreviewViewToCurrentPage(position);
-            }
-
-            if (holder instanceof SentenceViewHolder) {
-                ((SentenceViewHolder) holder).bind(isAiSentenceOn);
-            }
+        @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+            if (vpAiPanels != null && position == vpAiPanels.getCurrentItem()) attachPreviewViewToCurrentPage(position);
+            if (holder instanceof SentenceViewHolder) ((SentenceViewHolder) holder).bind(isAiSentenceOn);
         }
-
-        @Override
-        public int getItemCount() {
-            return 3;
-        }
-
-        @Override
-        public int getItemViewType(int position) {
-            return position;
-        }
+        @Override public int getItemCount() { return 3; }
+        @Override public int getItemViewType(int position) { return position; }
     }
 
     private class FatigueViewHolder extends RecyclerView.ViewHolder {
-        public FatigueViewHolder(@NonNull View itemView) {
-            super(itemView);
-            containerCameraFatigue = itemView.findViewById(R.id.containerCameraFatigue);
-            tvFatigueStatus = itemView.findViewById(R.id.tvFatigueStatus);
-            tvFatigueScore = itemView.findViewById(R.id.tvFatigueScore);
-            tvFatigueHint = itemView.findViewById(R.id.tvFatigueHint);
+        public FatigueViewHolder(@NonNull View v) {
+            super(v);
+            containerCameraFatigue = v.findViewById(R.id.containerCameraFatigue);
+            tvFatigueStatus = v.findViewById(R.id.tvFatigueStatus);
+            tvFatigueScore = v.findViewById(R.id.tvFatigueScore);
+            tvFatigueHint = v.findViewById(R.id.tvFatigueHint);
         }
     }
 
     private class EmotionViewHolder extends RecyclerView.ViewHolder {
-        public EmotionViewHolder(@NonNull View itemView) {
-            super(itemView);
-            containerCameraEmotion = itemView.findViewById(R.id.containerCameraEmotion);
-            tvEmotionState = itemView.findViewById(R.id.tvEmotionState);
+        public EmotionViewHolder(@NonNull View v) {
+            super(v);
+            containerCameraEmotion = v.findViewById(R.id.containerCameraEmotion);
+            tvEmotionState = v.findViewById(R.id.tvEmotionState);
         }
     }
 
     private class SentenceViewHolder extends RecyclerView.ViewHolder {
-
-        private final TextView tvDisabled;
+        private final TextView tvDisabled, tvResult;
         private final LinearLayout layoutContent;
         private final EditText etInput;
         private final AppCompatButton btnGenerate;
-        private final TextView tvResult;
-
-        public SentenceViewHolder(@NonNull View itemView) {
-            super(itemView);
-            tvDisabled = itemView.findViewById(R.id.tvAiSentenceDisabled);
-            layoutContent = itemView.findViewById(R.id.layoutAiSentenceContent);
-            etInput = itemView.findViewById(R.id.etAiWordsInput);
-            btnGenerate = itemView.findViewById(R.id.btnAiGenerate);
-            tvResult = itemView.findViewById(R.id.tvAiSentenceResult);
-
-            if (btnGenerate != null) {
-                btnGenerate.setOnClickListener(v -> {
-                    String inputWords = etInput.getText().toString().trim();
-                    if (inputWords.isEmpty()) {
-                        showSafeToast("请输入需要造句的单词");
-                        return;
-                    }
-                    tvResult.setText("请求发送中...");
-                    tvResult.setTextColor(Color.parseColor("#888888"));
-                    generateSentenceWithAI(inputWords, btnGenerate, tvResult);
-                });
-            }
+        public SentenceViewHolder(@NonNull View v) {
+            super(v);
+            tvDisabled = v.findViewById(R.id.tvAiSentenceDisabled);
+            layoutContent = v.findViewById(R.id.layoutAiSentenceContent);
+            etInput = v.findViewById(R.id.etAiWordsInput);
+            btnGenerate = v.findViewById(R.id.btnAiGenerate);
+            tvResult = v.findViewById(R.id.tvAiSentenceResult);
+            if (btnGenerate != null) btnGenerate.setOnClickListener(view -> {
+                String input = etInput.getText().toString().trim();
+                if (input.isEmpty()) { showSafeToast("请输入单词"); return; }
+                tvResult.setText("请求中...");
+                generateSentenceWithAI(input, btnGenerate, tvResult);
+            });
         }
-
-        public void bind(boolean isSentenceEnabled) {
-            if (isSentenceEnabled) {
-                if (tvDisabled != null) tvDisabled.setVisibility(View.GONE);
-                if (layoutContent != null) layoutContent.setVisibility(View.VISIBLE);
-            } else {
-                if (tvDisabled != null) tvDisabled.setVisibility(View.VISIBLE);
-                if (layoutContent != null) layoutContent.setVisibility(View.GONE);
-            }
+        public void bind(boolean enabled) {
+            if (tvDisabled != null) tvDisabled.setVisibility(enabled ? View.GONE : View.VISIBLE);
+            if (layoutContent != null) layoutContent.setVisibility(enabled ? View.VISIBLE : View.GONE);
         }
     }
 }

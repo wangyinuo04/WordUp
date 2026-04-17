@@ -13,6 +13,9 @@ public class UserPlan {
     private Integer dailyNewTarget;
     // 新增：每日复习目标
     private Integer dailyReviewTarget;
+    // 请确保您的 bookId 属性长这样：
+    @com.google.gson.annotations.SerializedName(value = "bookId", alternate = {"book_id"})
+    private Long bookId;
 
     public Long getUserId() {
         return userId;
@@ -68,5 +71,13 @@ public class UserPlan {
 
     public void setDailyReviewTarget(Integer dailyReviewTarget) {
         this.dailyReviewTarget = dailyReviewTarget;
+    }
+    // 在类的下方，加上配套的 Getter 和 Setter 方法：
+    public Long getBookId() {
+        return bookId;
+    }
+
+    public void setBookId(Long bookId) {
+        this.bookId = bookId;
     }
 }

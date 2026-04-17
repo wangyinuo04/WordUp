@@ -4,6 +4,7 @@ import com.example.appbackend.entity.Word;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -12,9 +13,7 @@ import java.util.List;
  */
 @Mapper
 public interface WordMapper {
-    /**
-     * 批量插入单词数据，包含新增的扩展字段
-     */
+
     @Insert({
             "<script>",
             "INSERT INTO word (book_id, spelling, phonetic, translation, difficulty, common_meaning, cs_meaning, en_example, cn_example) VALUES ",
@@ -24,4 +23,8 @@ public interface WordMapper {
             "</script>"
     })
     int insertBatch(@Param("list") List<Word> list);
+
+    // [新增]：根据词书ID获取全量单词
+    @Select("SELECT * FROM word WHERE book_id = #{bookId}")
+    List<Word> selectByBookId(@Param("bookId") Long bookId);
 }

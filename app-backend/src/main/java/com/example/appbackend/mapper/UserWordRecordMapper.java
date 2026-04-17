@@ -17,7 +17,6 @@ public interface UserWordRecordMapper extends BaseMapper<UserWordRecord> {
 
     /**
      * 队列优先级 1 (P0)：提取临时旧词
-     * 逻辑：is_temp_old = 1，按更新时间升序（最久未背的优先推送）
      */
     @Select("SELECT w.id AS wordId, w.spelling, w.phonetic, w.translation, w.difficulty AS difficulty, " +
             "uwr.id AS recordId, uwr.learn_status AS learnStatus, " +
@@ -34,7 +33,6 @@ public interface UserWordRecordMapper extends BaseMapper<UserWordRecord> {
 
     /**
      * 队列优先级 2 (P1)：提取今日待复习词 (艾宾浩斯)
-     * 逻辑：处于学习中 (learn_status = 1)，非临时旧词 (is_temp_old = 0)，且下次复习时间小于等于当前时间，按词书基准顺序
      */
     @Select("SELECT w.id AS wordId, w.spelling, w.phonetic, w.translation, w.difficulty AS difficulty, " +
             "uwr.id AS recordId, uwr.learn_status AS learnStatus, " +
@@ -53,7 +51,6 @@ public interface UserWordRecordMapper extends BaseMapper<UserWordRecord> {
 
     /**
      * 队列优先级 3 (P2)：提取新词
-     * 逻辑：左连接用户记录表，当记录不存在(uwr.id IS NULL)或未学习(learn_status = 0)时，按词书基准顺序推送
      */
     @Select("SELECT w.id AS wordId, w.spelling, w.phonetic, w.translation, w.difficulty AS difficulty, " +
             "uwr.id AS recordId, IFNULL(uwr.learn_status, 0) AS learnStatus, " +
@@ -68,29 +65,31 @@ public interface UserWordRecordMapper extends BaseMapper<UserWordRecord> {
     List<WordLearningVO> selectNewWords(@Param("userId") Long userId, @Param("bookId") Long bookId, @Param("limit") int limit);
 
     /**
-     * 动态配额核算：统计用户今日首次学习的新词数量
-     * 逻辑：通过 created_at 字段匹配今天日期
+     * 【修复点】：动态配额核算：统计用户今日首次学习的新词数量 (连表过滤 bookId)
      */
-    @Select("SELECT COUNT(*) FROM user_word_record WHERE user_id = #{userId} AND DATE(created_at) = CURDATE()")
-    int countTodayLearnedWords(@Param("userId") Long userId);
+    @Select("SELECT COUNT(*) FROM user_word_record uwr " +
+            "JOIN word w ON uwr.word_id = w.id " +
+            "WHERE uwr.user_id = #{userId} AND w.book_id = #{bookId} AND DATE(uwr.created_at) = CURDATE()")
+    int countTodayLearnedWords(@Param("userId") Long userId, @Param("bookId") Long bookId);
 
     /**
-     * 动态配额核算 1：统计今天首次学习的新词数量
-     * 逻辑：通过 created_at 字段匹配今天日期
+     * 【修复点】：动态配额核算 1：统计今天首次学习的新词数量 (连表过滤 bookId)
      */
-    @Select("SELECT COUNT(*) FROM user_word_record WHERE user_id = #{userId} AND DATE(created_at) = CURDATE()")
-    int countTodayLearnedNewWords(@Param("userId") Long userId);
+    @Select("SELECT COUNT(*) FROM user_word_record uwr " +
+            "JOIN word w ON uwr.word_id = w.id " +
+            "WHERE uwr.user_id = #{userId} AND w.book_id = #{bookId} AND DATE(uwr.created_at) = CURDATE()")
+    int countTodayLearnedNewWords(@Param("userId") Long userId, @Param("bookId") Long bookId);
 
     /**
-     * 动态配额核算 2：统计今天复习过的历史旧词数量
-     * 逻辑：今天更新过状态 (updated_at = 今天)，且不是今天刚创建的词 (created_at < 今天)
+     * 【修复点】：动态配额核算 2：统计今天复习过的历史旧词数量 (连表过滤 bookId)
      */
-    @Select("SELECT COUNT(*) FROM user_word_record WHERE user_id = #{userId} AND DATE(updated_at) = CURDATE() AND DATE(created_at) < CURDATE()")
-    int countTodayReviewedOldWords(@Param("userId") Long userId);
+    @Select("SELECT COUNT(*) FROM user_word_record uwr " +
+            "JOIN word w ON uwr.word_id = w.id " +
+            "WHERE uwr.user_id = #{userId} AND w.book_id = #{bookId} AND DATE(uwr.updated_at) = CURDATE() AND DATE(uwr.created_at) < CURDATE()")
+    int countTodayReviewedOldWords(@Param("userId") Long userId, @Param("bookId") Long bookId);
 
     /**
      * 学习进度核算：统计某一用户在特定词书下已存在记录的单词总数
-     * 逻辑：联查 word 表过滤 book_id，精准匹配 user_id 保障数据隔离
      */
     @Select("SELECT COUNT(uwr.id) " +
             "FROM user_word_record uwr " +
